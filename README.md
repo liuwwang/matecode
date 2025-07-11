@@ -1,267 +1,136 @@
-# 🤖 matecode
+# matecode
 
-一个用来自动生成 Git Commit 和工作日报的 CLI 工具，支持多种 LLM 提供商。
+matecode 是一个命令行工具，旨在帮助开发者根据 `git diff` 的内容，快速生成符合 [Conventional Commits](https://www.conventionalcommits.org/zh-cn/v1.0.0/) 规范的提交信息。同时，它也具备生成和发送工作日报的能力（此功能正在开发中）。
 
-## ✨ 特性
+## ✨ 主要功能
 
-- 🚀 **智能提交信息生成**: 基于 Git diff 自动生成符合 Conventional Commits 规范的提交信息
-- 🌐 **多 LLM 支持**: 支持 OpenAI、Gemini、Ollama 等多种 LLM 提供商
-- 📱 **跨平台支持**: 支持 Windows、macOS、Linux 等主流操作系统
-- 🎨 **美观的用户界面**: 彩色输出和进度指示器
-- ⚙️ **灵活配置**: 支持多种配置方式和自定义忽略规则
+- **提交信息生成**: 分析 `git diff` 结果，自动生成结构化的提交信息。
+- **多种LLM支持**: 可配置使用 Gemini, OpenAI, Ollama 等多种大型语言模型服务。
+- **跨平台**: 支持在 Windows, macOS, 和 Linux 上运行。
+- **配置灵活**: 用户可以通过配置文件自定义模型参数和忽略文件。
 
 ## 🛠️ 安装
 
-### 方法一：一键安装脚本（推荐）
+**重要提示**: 以下安装脚本中的仓库地址 `liuwwang/matecode` 已根据您提供的信息预设。如果您更改了仓库名，请务必同步修改脚本中的地址。
 
-**Linux/macOS:**
+### 方法一: 一键安装脚本 (推荐)
+
+**Linux / macOS:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yourusername/matecode/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/liuwwang/matecode/main/scripts/install.sh | bash
 ```
 
 **Windows (PowerShell):**
 ```powershell
-iwr -useb https://raw.githubusercontent.com/yourusername/matecode/main/scripts/install.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/liuwwang/matecode/main/scripts/install.ps1 | iex
 ```
 
-### 方法二：从 Release 下载
+### 方法二: 从 Release 页面下载
 
-1. 前往 [Releases](https://github.com/yourusername/matecode/releases) 页面
-2. 下载对应平台的二进制文件：
-   - **Windows**: `matecode-windows-x86_64.exe`
-   - **macOS (Intel)**: `matecode-macos-x86_64`
-   - **macOS (Apple Silicon)**: `matecode-macos-aarch64`
-   - **Linux (x86_64)**: `matecode-linux-x86_64`
-   - **Linux (ARM64)**: `matecode-linux-aarch64`
+1.  访问 [**[请在这里填写 Release 页面的链接]**](https://github.com/liuwwang/matecode/releases) 页面。
+2.  下载适用于您操作系统的最新版本二进制文件。
+3.  将下载的文件重命名为 `matecode` (或 `matecode.exe`) 并移动到您的系统 `PATH` 路径下，以便全局调用。
 
-3. 重命名并移动到 PATH 中：
-
-**Windows (PowerShell):**
-```powershell
-# 重命名文件
-Rename-Item matecode-windows-x86_64.exe matecode.exe
-# 移动到 PATH 中的目录，例如：
-Move-Item matecode.exe C:\Windows\System32\
-```
-
-**macOS/Linux:**
-```bash
-# 重命名文件
-mv matecode-macos-x86_64 matecode  # 或对应的文件名
-# 添加执行权限
-chmod +x matecode
-# 移动到 PATH 中的目录
-sudo mv matecode /usr/local/bin/
-```
-
-### 方法三：从源码构建
+### 方法三: 从源码构建
 
 #### 前置要求
 
-- [Rust](https://rustup.rs/) 1.70.0 或更高版本
+- [Rust](https://rustup.rs/) (版本 1.70.0 或更高)
 - [Git](https://git-scm.com/)
 
 #### 构建步骤
 
 ```bash
-# 克隆仓库
-git clone https://github.com/yourusername/matecode.git
+# 1. 克隆您的仓库
+git clone https://github.com/liuwwang/matecode.git
 cd matecode
 
-# 使用构建脚本（推荐）
-# Linux/macOS:
-./scripts/build.sh release
-
-# Windows:
-scripts\build.bat release
-
-# 或直接使用 Cargo
+# 2. 执行构建
 cargo build --release
-```
 
-构建完成后，二进制文件位于 `target/release/matecode`（Windows 下为 `matecode.exe`）。
+# 3. (可选) 将生成的可执行文件移动到系统 PATH
+# 可执行文件位于 target/release/matecode (Windows 下为 matecode.exe)
+```
 
 ## 🚀 快速开始
 
 ### 1. 初始化配置
 
+首次使用前，请运行初始化命令。它会在您的用户配置目录下创建所需的文件。
+
 ```bash
 matecode init
 ```
 
-这会在以下位置创建配置文件：
-- **Windows**: `%APPDATA%\matecode\`
-- **macOS**: `~/Library/Application Support/matecode/`
-- **Linux**: `~/.config/matecode/`
+### 2. 配置 .env 文件
 
-### 2. 配置 LLM 提供商
+初始化后，请编辑配置文件目录下的 `.env` 文件，以设置您要使用的语言模型。
 
-编辑配置目录中的 `.env` 文件：
-
-#### 使用 Gemini (默认)
+**配置示例 (Gemini):**
 ```env
 LLM_PROVIDER="gemini"
-GEMINI_API_KEY="your_gemini_api_key_here"
-GEMINI_MODEL_NAME="gemini-1.5-pro-latest"
+GEMINI_API_KEY="[请在这里填写您的 Gemini API Key]"
+# GEMINI_MODEL_NAME="gemini-1.5-pro-latest" # 可选，默认为此模型
 ```
 
-#### 使用 OpenAI
+**配置示例 (OpenAI):**
 ```env
 LLM_PROVIDER="openai"
-OPENAI_API_KEY="your_openai_api_key_here"
-OPENAI_API_URL="https://api.openai.com/v1/chat/completions"
-OPENAI_MODEL_NAME="gpt-4-turbo"
+OPENAI_API_KEY="[请在这里填写您的 OpenAI API Key]"
+# OPENAI_API_URL="https://api.openai.com/v1/chat/completions" # 可选
+# OPENAI_MODEL_NAME="gpt-4-turbo" # 可选
 ```
 
-#### 使用 Ollama (本地)
+**配置示例 (本地 Ollama):**
 ```env
 LLM_PROVIDER="ollama"
-OPENAI_API_KEY="ollama"
+# 对于 Ollama，API Key 不是必需的
+OPENAI_API_KEY="ollama" 
 OPENAI_API_URL="http://localhost:11434/v1/chat/completions"
-OPENAI_MODEL_NAME="llama3"
+# OPENAI_MODEL_NAME="llama3" # 请确保您本地已有此模型
 ```
 
-### 3. 使用
+### 3. 生成 Commit Message
 
 ```bash
-# 暂存你的更改
+# 1. 将您的代码更改添加到暂存区
 git add .
 
-# 生成并显示提交信息
+# 2. 运行命令生成提交信息
 matecode commit
 
-# 如果满意，可以复制输出的信息手动提交
-# 或者直接使用管道：
+# 3. (推荐) 使用管道直接提交
 matecode commit | git commit -F -
 ```
 
-## 📋 命令详解
+## 📋 命令参考
 
-### `matecode init`
-初始化配置文件，创建 `.env` 和 `.matecode-ignore` 文件。
-
-### `matecode commit`
-根据暂存的更改生成提交信息。
-
-**选项：**
-- `-s, --scope <SCOPE>`: 添加作用域到提交信息
-
-**示例：**
-```bash
-matecode commit --scope frontend
-```
-
-### `matecode report`
-生成工作日报（功能开发中）。
-
-**选项：**
-- `-a, --author <AUTHOR>`: 指定作者
+| 命令 | 描述 |
+| :--- | :--- |
+| `matecode init` | 初始化配置，在用户目录下创建 `.env` 和 `.matecode-ignore` 文件。 |
+| `matecode commit` | 基于暂存区的文件变更生成提交信息。 |
+| `matecode report` | **(开发中)** 生成并发送工作日报。 |
 
 ## ⚙️ 配置文件
 
-### `.env` 文件
-包含 LLM 提供商的配置信息。
-
-### `.matecode-ignore` 文件
-指定在生成提交信息时要忽略的文件模式，语法类似 `.gitignore`。
-
-默认忽略：
-```
-*.lock
-*.log
-*.json
-```
-
-## 🔧 开发
-
-### 项目结构
-```
-matecode/
-├── src/
-│   ├── main.rs          # 主入口
-│   ├── cli.rs           # CLI 接口定义
-│   ├── config.rs        # 配置管理
-│   ├── git.rs           # Git 操作
-│   ├── lib.rs           # 库入口
-│   └── llm/             # LLM 集成
-│       ├── mod.rs       # LLM 模块
-│       ├── openai.rs    # OpenAI 集成
-│       └── gemini.rs    # Gemini 集成
-├── scripts/             # 构建脚本
-│   ├── build.sh         # Linux/macOS 构建
-│   ├── build.bat        # Windows 构建
-│   ├── install.sh       # Linux/macOS 安装
-│   └── install.ps1      # Windows 安装
-├── .github/
-│   └── workflows/
-│       └── build.yml    # CI/CD 配置
-├── build.rs             # 构建脚本
-├── Cargo.toml           # 项目配置
-└── README.md
-```
-
-### 本地开发
-
-```bash
-# 克隆仓库
-git clone https://github.com/yourusername/matecode.git
-cd matecode
-
-# 运行开发版本
-cargo run -- init
-cargo run -- commit
-
-# 运行测试
-cargo test
-
-# 代码格式化
-cargo fmt
-
-# 代码检查
-cargo clippy
-```
-
-### 跨平台构建
-
-使用提供的构建脚本可以轻松进行跨平台构建：
-
-```bash
-# Linux/macOS
-./scripts/build.sh release
-
-# Windows
-scripts\build.bat release
-
-# 指定目标平台
-./scripts/build.sh release x86_64-pc-windows-gnu
-```
+-   `.env`: 用于存放 LLM 提供商的 API Key 和其他敏感配置。
+-   `.matecode-ignore`: 用于指定在生成提交信息时需要忽略的文件或目录，语法与 `.gitignore` 相同。
 
 ## 🤝 贡献
 
-欢迎贡献代码！请遵循以下步骤：
+本项目欢迎各种形式的贡献。如果您有好的想法或发现了问题，请通过以下方式参与：
 
-1. Fork 本仓库
-2. 创建你的特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交你的更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启一个 Pull Request
+1.  **Fork** 本仓库。
+2.  创建您的特性分支 (`git checkout -b feature/NewFeature`)。
+3.  提交您的代码更改 (`git commit -m 'feat: Add some NewFeature'`)。
+4.  将您的分支推送到您的 Fork (`git push origin feature/NewFeature`)。
+5.  提交一个 **Pull Request**。
+
+或者，您可以直接提交 [Issues](https://github.com/liuwwang/matecode/issues) 来报告 Bug 或提出功能建议。
 
 ## 📄 许可证
 
-本项目采用 MIT 许可证。详情请见 [LICENSE](LICENSE) 文件。
+本项目采用 [MIT License](LICENSE) 开源。
 
-## 🙏 致谢
-
-- [clap](https://github.com/clap-rs/clap) - 命令行参数解析
-- [tokio](https://github.com/tokio-rs/tokio) - 异步运行时
-- [reqwest](https://github.com/seanmonstar/reqwest) - HTTP 客户端
-- [colored](https://github.com/mackwic/colored) - 彩色终端输出
-- [indicatif](https://github.com/console-rs/indicatif) - 进度指示器
-
-## 📞 支持
-
-如果你遇到任何问题或有建议，请：
-
-1. 查看 [Issues](https://github.com/yourusername/matecode/issues) 页面
-2. 创建新的 Issue
-3. 或者发送邮件至 [your.email@example.com](mailto:your.email@example.com)
+---
+*该 README 由 [matecode](https://github.com/liuwwang/matecode) 生成，并由 liuwwang 最后修订。*
