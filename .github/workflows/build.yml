@@ -95,7 +95,10 @@ jobs:
     
     - name: Install OpenSSL dev package (Linux)
       if: matrix.os == 'ubuntu-latest'
-      run: sudo apt-get update && sudo apt-get install -y libssl-dev
+      run: |
+        sudo dpkg --add-architecture arm64
+        sudo apt-get update
+        sudo apt-get install -y libssl-dev libssl-dev:arm64
 
     - name: Cache cargo registry
       uses: actions/cache@v3
