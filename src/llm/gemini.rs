@@ -25,12 +25,17 @@ struct GeminiResponse {
     candidates: Vec<Candidate>,
 }
 
+#[derive(Deserialize, Debug)]
+struct Candidate {
+    content: Option<ContentResponse>,
+}
+
 #[derive(Deserialize, Debug, Clone)]
 struct ContentResponse {
     parts: Vec<PartResponse>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 struct PartResponse {
     text: Option<String>,
 }
@@ -59,7 +64,7 @@ impl LLMClient for GeminiClient {
         "Gemini"
     }
 
-    async fn call(&self, user_prompt: &str) -> Result<String> {
+    async fn call(&self, _system_prompt: &str, user_prompt: &str) -> Result<String> {
         let client = Client::new();
         let api_url = format!(
             "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
@@ -83,9 +88,10 @@ impl LLMClient for GeminiClient {
                     let text = response
                         .candidates
                         .first()
-                        .and_then(|c| c.content.clone())
-                        .and_then(|c| c.parts.first())
-                        .and_then(|p| p.text.clone())
+                        .and_then(|c| c.content.as_ref())
+                        .and_then(|content| content.parts.first())
+                        .and_then(|part| part.text.as_ref())
+                        .map(String::from)
                         .unwrap_or_default();
                     Ok(text)
                 }

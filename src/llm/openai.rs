@@ -66,15 +66,21 @@ impl LLMClient for OpenClient {
         "OpenAI"
     }
 
-    async fn call(&self, user_prompt: &str) -> Result<String> {
+    async fn call(&self, system_prompt: &str, user_prompt: &str) -> Result<String> {
         let client = Client::new();
 
         let request_payload = OpenAIRequest {
             model: &self.model_name,
-            messages: vec![ChatMessage {
-                role: "user",
-                content: user_prompt,
-            }],
+            messages: vec![
+                ChatMessage {
+                    role: "system",
+                    content: system_prompt,
+                },
+                ChatMessage {
+                    role: "user",
+                    content: user_prompt,
+                },
+            ],
             temperature: 0.6,
         };
 

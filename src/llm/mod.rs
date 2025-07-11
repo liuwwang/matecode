@@ -16,9 +16,10 @@ pub trait LLMClient: Send + Sync {
     /// Returns the name of the LLM client.
     fn name(&self) -> &str;
     /// Calls the LLM with a user prompt and returns the generated response.
-    async fn call(&self, user_prompt: &str) -> Result<String>;
+    async fn call(&self, system_prompt: &str, user_prompt: &str) -> Result<String>;
 }
 
+#[allow(clippy::upper_case_acronyms)]
 pub enum LLM {
     Gemini(GeminiClient),
     OpenAI(OpenClient),
@@ -33,10 +34,10 @@ impl LLMClient for LLM {
         }
     }
 
-    async fn call(&self, user_prompt: &str) -> Result<String> {
+    async fn call(&self, system_prompt: &str, user_prompt: &str) -> Result<String> {
         match self {
-            LLM::Gemini(c) => c.call(user_prompt).await,
-            LLM::OpenAI(c) => c.call(user_prompt).await,
+            LLM::Gemini(c) => c.call(system_prompt, user_prompt).await,
+            LLM::OpenAI(c) => c.call(system_prompt, user_prompt).await,
         }
     }
 }
@@ -68,18 +69,17 @@ pub async fn generate_commit_message(client: &LLM, diff: &str) -> Result<String>
 7. 根据下面的 `<diff>` 内容，生成一个合适的 commit message。
 </rules>
 <diff>
-{}
-</diff>"#,
-        diff
+{diff}
+</diff>"#
     );
 
-    let raw_llm_output = client.call(&user_prompt).await?;
+    let raw_llm_output = client.call(system_prompt, &user_prompt).await?;
 
     if let Some(thought) = extract_content(&raw_llm_output, "think") {
         println!(
             "\n🤔 {}{}\n",
             "AI 思考:".bold(),
-            format!("\n---\n{}\n---", thought).cyan()
+            format!("\n---\n{thought}\n---").cyan()
         );
     }
 

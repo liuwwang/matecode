@@ -3,14 +3,18 @@
 use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
-use dotenvy;
 use indicatif::{ProgressBar, ProgressStyle};
-use matecode::{
-    cli::{Cli, Commands},
-    config, git, llm,
-};
 use std::path::Path;
 use std::time::Duration;
+
+mod cli;
+mod config;
+mod git;
+mod llm;
+
+use cli::{Cli, Commands};
+use git::get_staged_diff;
+use llm::generate_commit_message;
 
 async fn run() -> Result<()> {
     // 跨平台的环境变量加载
@@ -31,14 +35,14 @@ async fn run() -> Result<()> {
 
     match cli.command {
         Commands::Commit { .. } => {
-            let diff = git::get_staged_diff()?;
+            let diff = get_staged_diff()?;
 
             if diff.is_empty() {
-                println!("{}", "未发现暂存的变更。".yellow());
+                println!("{}", "No staged changes found.".yellow());
                 return Ok(());
             }
 
-            let client = config::get_llm_client()?;
+            let llm_client = config::get_llm_client()?;
 
             let spinner = ProgressBar::new_spinner();
             spinner.set_style(
@@ -49,11 +53,11 @@ async fn run() -> Result<()> {
             spinner.set_message("正在生成提交信息...");
             spinner.enable_steady_tick(Duration::from_millis(100));
 
-            let message = llm::generate_commit_message(&client, &diff).await?;
+            let commit_message = generate_commit_message(&llm_client, &diff).await?;
 
             spinner.finish_and_clear();
 
-            println!("{}", message);
+            println!("{commit_message}");
         }
         Commands::Report { .. } => {
             println!("{}", "Report 命令暂未实现。".yellow());
