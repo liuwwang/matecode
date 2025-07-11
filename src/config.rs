@@ -1,6 +1,6 @@
 //! src/config.rs
 
-use crate::llm::{GeminiClient, LLM, OpenClient};
+use crate::llm::{GeminiClient, OpenClient, LLM};
 use anyhow::{anyhow, Result};
 use std::env;
 use std::path::PathBuf;
@@ -45,7 +45,7 @@ pub fn get_config_dir() -> Result<PathBuf> {
             .ok_or_else(|| anyhow!("无法找到配置目录"))?
             .join("matecode")
     };
-    
+
     Ok(config_dir)
 }
 
@@ -73,4 +73,4 @@ pub async fn create_default_config() -> Result<PathBuf> {
     }
 
     Ok(config_dir)
-} 
+}

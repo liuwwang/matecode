@@ -5,12 +5,12 @@ use clap::Parser;
 use colored::Colorize;
 use dotenvy;
 use indicatif::{ProgressBar, ProgressStyle};
-use std::path::Path;
-use std::time::Duration;
 use matecode::{
     cli::{Cli, Commands},
     config, git, llm,
 };
+use std::path::Path;
+use std::time::Duration;
 
 async fn run() -> Result<()> {
     // 跨平台的环境变量加载
@@ -21,7 +21,7 @@ async fn run() -> Result<()> {
             dotenvy::from_path(env_path).ok();
         }
     }
-    
+
     // 2. 也尝试从当前工作目录加载 .env 文件
     if Path::new(".env").exists() {
         dotenvy::dotenv().ok();

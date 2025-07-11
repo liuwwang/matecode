@@ -54,10 +54,7 @@ fn extract_from_xml(text: &str, tag: &str) -> Option<String> {
 }
 
 pub async fn generate_commit_message(client: &LLM, diff: &str) -> Result<String> {
-    println!(
-        "🤖 正在调用 {} 生成提交信息...",
-        client.name()
-    );
+    println!("🤖 正在调用 {} 生成提交信息...", client.name());
 
     let user_prompt = format!(
         r#"请根据以下的 git diff 内容生成一个 git commit message。
@@ -106,4 +103,4 @@ docs(readme): 完善项目说明
     })?;
 
     Ok(commit_message)
-} 
+}

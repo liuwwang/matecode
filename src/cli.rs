@@ -25,4 +25,4 @@ pub enum Commands {
     },
     /// Initializes matecode's configuration.
     Init,
-} 
+}

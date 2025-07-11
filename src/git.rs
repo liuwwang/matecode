@@ -1,9 +1,9 @@
 //! src/git.rs
-use std::process::{Command, Output};
+use crate::config::get_config_dir;
 use anyhow::Result;
 use ignore::gitignore::GitignoreBuilder;
 use std::path::Path;
-use crate::config::get_config_dir;
+use std::process::{Command, Output};
 
 fn run_git_command(args: &[&str]) -> Result<Output> {
     // 跨平台的 Git 命令调用
@@ -13,16 +13,13 @@ fn run_git_command(args: &[&str]) -> Result<Output> {
     } else {
         "git"
     };
-    
-    let output = Command::new(git_cmd)
-        .args(args)
-        .output()
-        .or_else(|_| {
-            // 如果失败，尝试另一种方式
-            let fallback_cmd = if cfg!(windows) { "git" } else { "git.exe" };
-            Command::new(fallback_cmd).args(args).output()
-        })?;
-    
+
+    let output = Command::new(git_cmd).args(args).output().or_else(|_| {
+        // 如果失败，尝试另一种方式
+        let fallback_cmd = if cfg!(windows) { "git" } else { "git.exe" };
+        Command::new(fallback_cmd).args(args).output()
+    })?;
+
     if output.status.success() {
         Ok(output)
     } else {
@@ -47,8 +44,13 @@ pub fn get_staged_diff() -> Result<String> {
     };
 
     // 1. 获取所有暂存的文件名
-    let name_only_output =
-        run_git_command(&["diff-index", "--cached", "--name-only", "--no-renames", parent_ref])?;
+    let name_only_output = run_git_command(&[
+        "diff-index",
+        "--cached",
+        "--name-only",
+        "--no-renames",
+        parent_ref,
+    ])?;
     let staged_files_raw = String::from_utf8_lossy(&name_only_output.stdout);
     if staged_files_raw.trim().is_empty() {
         return Ok(String::new());
@@ -116,4 +118,4 @@ pub fn get_staged_diff() -> Result<String> {
     let diff_string = String::from_utf8_lossy(&diff_output.stdout).to_string();
 
     Ok(diff_string)
-} 
+}

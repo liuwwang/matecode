@@ -51,7 +51,10 @@ impl GeminiClient {
             .map_err(|_| anyhow!("错误：请在 .env 文件中设置 GEMINI_API_KEY"))?;
         let model_name =
             env::var("GEMINI_MODEL_NAME").unwrap_or_else(|_| "gemini-1.5-pro-latest".to_string());
-        Ok(Self { api_key, model_name })
+        Ok(Self {
+            api_key,
+            model_name,
+        })
     }
 }
 
@@ -99,4 +102,4 @@ impl LLMClient for GeminiClient {
             ))
         }
     }
-} 
+}

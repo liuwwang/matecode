@@ -46,7 +46,8 @@ impl OpenClient {
         let api_key = env::var("OPENAI_API_KEY")
             .map_err(|_| anyhow!("错误：请在 .env 文件中设置 OPENAI_API_KEY"))?;
 
-        let model_name = env::var("OPENAI_MODEL_NAME").unwrap_or_else(|_| "gpt-4-turbo".to_string());
+        let model_name =
+            env::var("OPENAI_MODEL_NAME").unwrap_or_else(|_| "gpt-4-turbo".to_string());
 
         let api_base = env::var("OPENAI_API_URL")
             .unwrap_or_else(|_| "https://api.openai.com/v1/chat/completions".to_string());
@@ -91,9 +92,7 @@ impl LLMClient for OpenClient {
             if let Some(first_choice) = response.choices.get(0) {
                 Ok(first_choice.message.content.trim().to_string())
             } else {
-                Err(anyhow::anyhow!(
-                    "API 调用成功，但返回的 'choices' 数组为空"
-                ))
+                Err(anyhow::anyhow!("API 调用成功，但返回的 'choices' 数组为空"))
             }
         } else {
             let error_body = res.text().await?;
@@ -105,4 +104,4 @@ impl LLMClient for OpenClient {
             ))
         }
     }
-} 
+}
