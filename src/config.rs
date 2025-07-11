@@ -19,16 +19,34 @@ pub fn get_llm_client() -> Result<LLM> {
         "gemini" => Ok(LLM::Gemini(GeminiClient::new()?)),
         "openai" => Ok(LLM::OpenAI(OpenClient::new()?)),
         "ollama" => Ok(LLM::OpenAI(OpenClient::new()?)),
-        _ => Err(anyhow!("Unsupported LLM_PROVIDER: {}", provider)),
+        _ => Err(anyhow!("不支持的 LLM_PROVIDER: {}", provider)),
     }
 }
 
-/// Gets the path to the matecode config directory in the user's home directory.
+/// Gets the path to the matecode config directory following platform conventions.
 ///
-/// This function returns the path `~/.matecode_config/`.
+/// - Windows: %APPDATA%\matecode
+/// - macOS: ~/Library/Application Support/matecode  
+/// - Linux: ~/.config/matecode
 pub fn get_config_dir() -> Result<PathBuf> {
-    let home_dir = dirs::home_dir().ok_or_else(|| anyhow!("Could not find home directory"))?;
-    Ok(home_dir.join(".matecode_config"))
+    let config_dir = if cfg!(windows) {
+        // Windows: %APPDATA%\matecode
+        dirs::config_dir()
+            .ok_or_else(|| anyhow!("无法找到配置目录"))?
+            .join("matecode")
+    } else if cfg!(target_os = "macos") {
+        // macOS: ~/Library/Application Support/matecode
+        dirs::config_dir()
+            .ok_or_else(|| anyhow!("无法找到配置目录"))?
+            .join("matecode")
+    } else {
+        // Linux: ~/.config/matecode
+        dirs::config_dir()
+            .ok_or_else(|| anyhow!("无法找到配置目录"))?
+            .join("matecode")
+    };
+    
+    Ok(config_dir)
 }
 
 /// Creates the default .env and .matecode-ignore files in `~/.matecode_config/` if they don't exist.

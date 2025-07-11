@@ -6,12 +6,28 @@ use std::path::Path;
 use crate::config::get_config_dir;
 
 fn run_git_command(args: &[&str]) -> Result<Output> {
-    let output = Command::new("git").args(args).output()?;
+    // 跨平台的 Git 命令调用
+    let git_cmd = if cfg!(windows) {
+        // Windows 上优先尝试 git.exe
+        "git.exe"
+    } else {
+        "git"
+    };
+    
+    let output = Command::new(git_cmd)
+        .args(args)
+        .output()
+        .or_else(|_| {
+            // 如果失败，尝试另一种方式
+            let fallback_cmd = if cfg!(windows) { "git" } else { "git.exe" };
+            Command::new(fallback_cmd).args(args).output()
+        })?;
+    
     if output.status.success() {
         Ok(output)
     } else {
         Err(anyhow::anyhow!(
-            "Git command failed (exit code: {}):\n{}",
+            "Git 命令执行失败 (退出码: {}):\n{}",
             output.status,
             String::from_utf8_lossy(&output.stderr)
         ))
@@ -64,7 +80,7 @@ pub fn get_staged_diff() -> Result<String> {
             .components()
             .any(|c| c.as_os_str().to_string_lossy().starts_with('.'));
         if is_hidden {
-            println!("ℹ️  Ignoring hidden file/directory: {}", file_path_str);
+            println!("ℹ️  已忽略隐藏文件/目录: {}", file_path_str);
             continue;
         }
 
@@ -74,7 +90,7 @@ pub fn get_staged_diff() -> Result<String> {
             files_to_diff.push(file_path_str);
         } else {
             println!(
-                "ℹ️  Ignoring file based on .gitignore/.matecode-ignore: {}",
+                "ℹ️  已根据 .gitignore/.matecode-ignore 忽略文件: {}",
                 file_path_str
             );
         }

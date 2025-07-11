@@ -2,6 +2,7 @@
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
+use colored::Colorize;
 
 pub mod gemini;
 pub mod openai;
@@ -54,28 +55,32 @@ fn extract_from_xml(text: &str, tag: &str) -> Option<String> {
 
 pub async fn generate_commit_message(client: &LLM, diff: &str) -> Result<String> {
     println!(
-        "🤖 Calling {} to generate commit message...",
+        "🤖 正在调用 {} 生成提交信息...",
         client.name()
     );
 
     let user_prompt = format!(
-        r#"Please generate a commit message based on the following git diff.
+        r#"请根据以下的 git diff 内容生成一个 git commit message。
 <rules>
-1. You are an expert at writing Git commit messages.
-2. Strictly follow the Conventional Commits specification.
-3. Your entire response must be only the commit message.
-4. Do not include any markdown formatting (like ```).
-5. Enclose the final commit message completely within a <commit_message> XML tag.
+1. 你是一位专业的 Git commit message 编写专家。
+2. 严格遵守 Conventional Commits 规范。
+3. 你的所有输出必须严格只有 commit message，并且必须是中文。
+4. 在开始生成 commit message 之前，你可以先在 <think> XML 标签中进行思考。这部分是可选的。
+5. 不要包含任何 markdown 格式（例如 ```）。
+6. 将最终的 commit message 完全包裹在 <commit_message> XML 标签内。
 </rules>
 <example>
+<think>
+用户修改了 README 文件，添加了关于项目安装和使用的说明。这是一个文档类型的变更，不涉及代码功能。所以我应该使用 'docs' 作为类型。
+</think>
 <commit_message>
-feat(api): add user authentication endpoint
+docs(readme): 完善项目说明
 
-Implements JWT login and registration for users, including password hashing and token generation.
+增加了安装和使用方法的详细介绍。
 </commit_message>
 </example>
 
-Diff:
+差异(Diff):
 ```diff
 {}
 ```
@@ -85,9 +90,17 @@ Diff:
 
     let raw_llm_output = client.call(&user_prompt).await?;
 
+    if let Some(thought) = extract_from_xml(&raw_llm_output, "think") {
+        println!(
+            "\n🤔 {}{}\n",
+            "AI 思考:".bold(),
+            format!("\n---\n{}\n---", thought).cyan()
+        );
+    }
+
     let commit_message = extract_from_xml(&raw_llm_output, "commit_message").ok_or_else(|| {
         anyhow!(
-            "Could not extract <commit_message> tag from LLM response.\nRaw output: {}",
+            "无法从 LLM 响应中提取 <commit_message> 标签。\n原始输出: {}",
             raw_llm_output
         )
     })?;

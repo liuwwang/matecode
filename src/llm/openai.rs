@@ -44,7 +44,7 @@ pub struct OpenClient {
 impl OpenClient {
     pub fn new() -> Result<Self> {
         let api_key = env::var("OPENAI_API_KEY")
-            .map_err(|_| anyhow!("ERROR: Please set the OPENAI_API_KEY in your .env file"))?;
+            .map_err(|_| anyhow!("错误：请在 .env 文件中设置 OPENAI_API_KEY"))?;
 
         let model_name = env::var("OPENAI_MODEL_NAME").unwrap_or_else(|_| "gpt-4-turbo".to_string());
 
@@ -74,7 +74,7 @@ impl LLMClient for OpenClient {
                 role: "user",
                 content: user_prompt,
             }],
-            temperature: 0.7,
+            temperature: 0.6,
         };
 
         let res = client
@@ -92,14 +92,14 @@ impl LLMClient for OpenClient {
                 Ok(first_choice.message.content.trim().to_string())
             } else {
                 Err(anyhow::anyhow!(
-                    "API returned success but the 'choices' array was empty"
+                    "API 调用成功，但返回的 'choices' 数组为空"
                 ))
             }
         } else {
             let error_body = res.text().await?;
 
             Err(anyhow!(
-                "Failed to call OpenAI-compatible API: {}\nResponse body: {}",
+                "调用 OpenAI 兼容 API 失败: {}\n响应体: {}",
                 res_status,
                 error_body
             ))

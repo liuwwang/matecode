@@ -2,6 +2,18 @@
 name = "matecode"
 version = "0.1.0"
 edition = "2021"
+description = "一个用来自动生成 Git Commit 和工作日报的 CLI 工具"
+authors = ["Your Name <your.email@example.com>"]
+license = "MIT"
+repository = "https://github.com/yourusername/matecode"
+readme = "README.md"
+keywords = ["git", "commit", "ai", "cli", "automation"]
+categories = ["command-line-utilities", "development-tools"]
+
+# 二进制目标
+[[bin]]
+name = "matecode"
+path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.86"
@@ -15,4 +27,25 @@ indicatif = "0.17.8"
 reqwest = { version = "0.12.4", features = ["json"] }
 serde = { version = "1.0.203", features = ["derive"] }
 serde_json = "1.0.117"
-tokio = { version = "1", features = ["full"] } 
+tokio = { version = "1", features = ["full"] }
+
+# 平台特定依赖
+[target.'cfg(windows)'.dependencies]
+# Windows 特定依赖可以在这里添加
+
+[target.'cfg(unix)'.dependencies]
+# Unix 特定依赖可以在这里添加
+
+# 发布配置优化
+[profile.release]
+strip = true          # 移除调试符号
+lto = true           # 链接时优化
+codegen-units = 1    # 单个代码生成单元以获得更好的优化
+panic = "abort"      # 减少二进制文件大小
+opt-level = "z"      # 优化大小
+
+# 开发配置
+[profile.dev]
+opt-level = 0        # 不优化，加快编译速度
+debug = true         # 包含调试信息
+overflow-checks = true # 开启溢出检查 
