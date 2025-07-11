@@ -89,7 +89,7 @@ impl LLMClient for OpenClient {
 
         if res_status.is_success() {
             let response = res.json::<OpenAIResponse>().await?;
-            if let Some(first_choice) = response.choices.get(0) {
+            if let Some(first_choice) = response.choices.first() {
                 Ok(first_choice.message.content.trim().to_string())
             } else {
                 Err(anyhow::anyhow!("API 调用成功，但返回的 'choices' 数组为空"))

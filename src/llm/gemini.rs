@@ -82,16 +82,20 @@ impl LLMClient for GeminiClient {
         let res_status = res.status();
 
         if res_status.is_success() {
-            let response = res.json::<GeminiResponse>().await?;
-            let text = response
-                .candidates
-                .get(0)
-                .and_then(|c| c.content.as_ref())
-                .and_then(|c| c.parts.get(0))
-                .and_then(|p| p.text.as_ref())
-                .map(|t| t.trim().to_string())
-                .ok_or_else(|| anyhow!("无法从 Gemini API 响应中提取文本"))?;
-            Ok(text)
+            let response_result = res.json::<GeminiResponse>().await;
+            match response_result {
+                Ok(response) => {
+                    let text = response
+                        .candidates
+                        .first()
+                        .and_then(|c| c.content.clone())
+                        .and_then(|c| c.parts.first())
+                        .and_then(|p| p.text.clone())
+                        .unwrap_or_default();
+                    Ok(text)
+                }
+                Err(e) => Err(anyhow!("无法从 Gemini API 响应中提取文本: {}", e)),
+            }
         } else {
             let error_body = res.text().await?;
             Err(anyhow!(

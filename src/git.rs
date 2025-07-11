@@ -82,7 +82,7 @@ pub fn get_staged_diff() -> Result<String> {
             .components()
             .any(|c| c.as_os_str().to_string_lossy().starts_with('.'));
         if is_hidden {
-            println!("ℹ️  已忽略隐藏文件/目录: {}", file_path_str);
+            println!("ℹ️  已忽略隐藏文件/目录: {file_path_str}");
             continue;
         }
 
@@ -92,8 +92,7 @@ pub fn get_staged_diff() -> Result<String> {
             files_to_diff.push(file_path_str);
         } else {
             println!(
-                "ℹ️  已根据 .gitignore/.matecode-ignore 忽略文件: {}",
-                file_path_str
+                "ℹ️  已根据 .gitignore/.matecode-ignore 忽略文件: {file_path_str}"
             );
         }
     }

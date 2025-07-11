@@ -41,53 +41,46 @@ impl LLMClient for LLM {
     }
 }
 
-fn extract_from_xml(text: &str, tag: &str) -> Option<String> {
-    let start_tag = format!("<{}>", tag);
-    let end_tag = format!("</{}>", tag);
-    text.find(&start_tag)
-        .and_then(|start| {
-            text[start + start_tag.len()..]
-                .find(&end_tag)
-                .map(|end| text[start + start_tag.len()..start + start_tag.len() + end].to_string())
-        })
+pub fn extract_content(text: &str, tag: &str) -> Option<String> {
+    let start_tag = format!("<{tag}>");
+    let end_tag = format!("</{tag}>");
+    let start_byte = text.find(&start_tag)? + start_tag.len();
+    text[start_byte..]
+        .find(&end_tag)
+        .map(|end| text[start_byte..start_byte + end].to_string())
         .map(|s| s.trim().to_string())
 }
 
 pub async fn generate_commit_message(client: &LLM, diff: &str) -> Result<String> {
     println!("🤖 正在调用 {} 生成提交信息...", client.name());
 
+    let system_prompt = r#"你是一个根据 git diff 内容生成 Conventional Commits 规范的 git commit message 的专家。你的回应应该只包含 commit message，不包含任何额外的解释或引言。commit message 应该是 markdown 格式，以`#`开头。"#;
+
     let user_prompt = format!(
         r#"请根据以下的 git diff 内容生成一个 git commit message。
 <rules>
 1. 你是一位专业的 Git commit message 编写专家。
-2. 严格遵守 Conventional Commits 规范。
-3. 你的所有输出必须严格只有 commit message，并且必须是中文。
-4. 在开始生成 commit message 之前，你可以先在 <think> XML 标签中进行思考。这部分是可选的。
-5. 不要包含任何 markdown 格式（例如 ```）。
-6. 将最终的 commit message 完全包裹在 <commit_message> XML 标签内。
+2. 你的回应**只能**包含 commit message 内容，不要有其他任何解释。
+3. commit message 必须严格遵守 Conventional Commits 规范。
+4. commit message 的 header 部分(第一行)不能超过 50 个字符。
+5. commit message 的 subject 应该清晰地描述这次提交的目的。
+6. 如果有 scope，请在 type 后用括号附上，例如 `feat(api):`。
+7. 根据下面的 `<diff>` 内容，生成一个合适的 commit message。
 </rules>
-<example>
-<think>
-用户修改了 README 文件，添加了关于项目安装和使用的说明。这是一个文档类型的变更，不涉及代码功能。所以我应该使用 'docs' 作为类型。
-</think>
-<commit_message>
-docs(readme): 完善项目说明
-
-增加了安装和使用方法的详细介绍。
-</commit_message>
-</example>
-
-差异(Diff):
-```diff
-{}
-```
-"#,
-        diff
+<scope>
+{scope}
+</scope>
+<language>
+{language}
+</language>
+<diff>
+{diff}
+</diff>"#
     );
 
     let raw_llm_output = client.call(&user_prompt).await?;
 
-    if let Some(thought) = extract_from_xml(&raw_llm_output, "think") {
+    if let Some(thought) = extract_content(&raw_llm_output, "think") {
         println!(
             "\n🤔 {}{}\n",
             "AI 思考:".bold(),
@@ -95,7 +88,7 @@ docs(readme): 完善项目说明
         );
     }
 
-    let commit_message = extract_from_xml(&raw_llm_output, "commit_message").ok_or_else(|| {
+    let commit_message = extract_content(&raw_llm_output, "commit_message").ok_or_else(|| {
         anyhow!(
             "无法从 LLM 响应中提取 <commit_message> 标签。\n原始输出: {}",
             raw_llm_output
