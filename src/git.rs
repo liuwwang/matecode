@@ -91,9 +91,7 @@ pub fn get_staged_diff() -> Result<String> {
         if !is_ignored {
             files_to_diff.push(file_path_str);
         } else {
-            println!(
-                "ℹ️  已根据 .gitignore/.matecode-ignore 忽略文件: {file_path_str}"
-            );
+            println!("ℹ️  已根据 .gitignore/.matecode-ignore 忽略文件: {file_path_str}");
         }
     }
 
