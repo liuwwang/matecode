@@ -44,7 +44,7 @@ fn main() {
     }
 
     // 输出构建信息
-    println!("cargo:warning=Building for target: {}", target);
-    println!("cargo:warning=Target OS: {}", target_os);
-    println!("cargo:warning=Target Architecture: {}", target_arch);
+    println!("cargo:warning=Building for target: {target}");
+    println!("cargo:warning=Target OS: {target_os}");
+    println!("cargo:warning=Target Architecture: {target_arch}");
 }
