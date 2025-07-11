@@ -67,15 +67,10 @@ pub async fn generate_commit_message(client: &LLM, diff: &str) -> Result<String>
 6. 如果有 scope，请在 type 后用括号附上，例如 `feat(api):`。
 7. 根据下面的 `<diff>` 内容，生成一个合适的 commit message。
 </rules>
-<scope>
-{scope}
-</scope>
-<language>
-{language}
-</language>
 <diff>
-{diff}
-</diff>"#
+{}
+</diff>"#,
+        diff
     );
 
     let raw_llm_output = client.call(&user_prompt).await?;

@@ -25,12 +25,7 @@ struct GeminiResponse {
     candidates: Vec<Candidate>,
 }
 
-#[derive(Deserialize, Debug)]
-struct Candidate {
-    content: Option<ContentResponse>,
-}
-
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 struct ContentResponse {
     parts: Vec<PartResponse>,
 }
