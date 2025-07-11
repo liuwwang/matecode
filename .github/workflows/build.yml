@@ -2,7 +2,7 @@ name: Build and Release
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, master, develop ]
     tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
@@ -133,7 +133,7 @@ jobs:
         cp target/${{ matrix.target }}/release/matecode.exe ${{ matrix.name }}
     
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.name }}
         path: ${{ matrix.name }}
@@ -148,7 +148,7 @@ jobs:
     - uses: actions/checkout@v4
     
     - name: Download all artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         path: artifacts
     
