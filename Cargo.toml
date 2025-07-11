@@ -1,0 +1,18 @@
+[package]
+name = "matecode"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.86"
+async-trait = "0.1"
+clap = { version = "4.5.4", features = ["derive"] }
+colored = "2.1.0"
+dirs = "5.0.1"
+dotenvy = "0.15.7"
+ignore = "0.4.22"
+indicatif = "0.17.8"
+reqwest = { version = "0.12.4", features = ["json"] }
+serde = { version = "1.0.203", features = ["derive"] }
+serde_json = "1.0.117"
+tokio = { version = "1", features = ["full"] } 
