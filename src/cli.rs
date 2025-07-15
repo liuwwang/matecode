@@ -18,12 +18,25 @@ pub enum Commands {
         #[arg(short, long)]
         all: bool,
     },
-    /// Generate a daily report.
+    /// Generate a work report based on commit history.
     #[command(alias = "r")]
-    Report,
-    /// 初始化 matecode 配置文件
+    Report {
+        /// The start date for the report (e.g., "2023-01-01", "7d ago"). Defaults to today.
+        #[arg(long)]
+        since: Option<String>,
+
+        /// The end date for the report (e.g., "2023-01-31"). Defaults to today.
+        #[arg(long)]
+        until: Option<String>,
+    },
+    /// Perform an AI-powered review of staged code changes.
+    #[command(alias = "rev")]
+    Review,
+    /// Initialize matecode configuration file.
+    #[command(alias = "i")]
     Init,
-    /// [内部使用] 归档上一次的提交信息，用于 git hook
+    /// [Internal] Archive the last commit message, used by git hooks.
+    #[command(hide = true)]
     Archive,
 
     /// 安装 git hook

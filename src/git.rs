@@ -1,31 +1,146 @@
 //! src/git.rs
 use crate::config::get_config_dir;
-use anyhow::Result;
-use ignore::gitignore::GitignoreBuilder;
-use std::path::Path;
-use std::process::{Command, Output};
+use anyhow::{anyhow, Context, Result};
+use async_recursion::async_recursion;
+use ignore::overrides::OverrideBuilder;
+use ignore::WalkBuilder;
+use std::process::Command;
+
+pub fn run_git_command(args: &[&str]) -> Result<std::process::Output> {
+    // 跨平台的 Git 命令调用
+    let git_cmd = if cfg!(windows) {
+        // Windows 上优先尝试 git.exe
+        "git.exe"
+    } else {
+        "git"
+    };
+
+    let output = Command::new(git_cmd).args(args).output().or_else(|_| {
+        // 如果失败，尝试另一种方式
+        let fallback_cmd = if cfg!(windows) { "git" } else { "git.exe" };
+        Command::new(fallback_cmd).args(args).output()
+    })?;
+
+    if output.status.success() {
+        Ok(output)
+    } else {
+        Err(anyhow!("Git 命令执行失败 (退出码: {}):\n{}", output.status, String::from_utf8_lossy(&output.stderr)))
+    }
+}
+
+pub fn get_staged_diff() -> Result<String> {
+    let output = run_git_command(&["diff", "--staged", "--unified=0"])?;
+    Ok(String::from_utf8(output.stdout)?)
+}
+
+async fn build_ignore_matcher() -> Result<ignore::gitignore::Gitignore> {
+    let mut builder = ignore::gitignore::GitignoreBuilder::new(".");
+
+    // Add global gitignore
+    if let Some(home_dir) = dirs::home_dir() {
+        let global_gitignore = home_dir.join(".config/git/ignore");
+        if global_gitignore.exists() {
+            builder.add(global_gitignore);
+        }
+    }
+
+    // Add per-repo gitignore
+    let repo_root = String::from_utf8(run_git_command(&["rev-parse", "--show-toplevel"])?.stdout)?
+        .trim()
+        .to_string();
+    let repo_gitignore = std::path::Path::new(&repo_root).join(".gitignore");
+    if repo_gitignore.exists() {
+        builder.add(repo_gitignore);
+    }
+    
+    // Add matecode specific ignore
+    if let Ok(config_dir) = get_config_dir().await {
+        let matecode_ignore = config_dir.join(".matecode-ignore");
+        if matecode_ignore.exists() {
+            println!(
+                "🚫 已根据 .gitignore/.matecode-ignore 忽略文件: {}",
+                matecode_ignore.to_string_lossy()
+            );
+            builder.add(matecode_ignore);
+        }
+    }
+
+    Ok(builder.build()?)
+}
+
+pub async fn get_diff_context(_config: &crate::config::ContextConfig, max_tokens: usize) -> Result<String> {
+    let staged_diff = get_staged_diff()?;
+    if staged_diff.is_empty() {
+        return Ok(String::new());
+    }
+
+    let _diff_files = staged_diff.lines()
+        .filter(|line| line.starts_with("diff --git"))
+        .map(|line| line.split_whitespace().nth(2).unwrap_or("").strip_prefix("a/").unwrap_or(""))
+        .collect::<Vec<&str>>();
+
+    let project_name = get_project_name()?;
+    
+    let mut project_tree = String::new();
+    project_tree.push_str(&format!("Project: {}\n", project_name));
+    project_tree.push_str("Project file tree:\n");
+
+    let ignore_matcher = build_ignore_matcher().await?;
+
+    let walk = WalkBuilder::new(".")
+        .overrides(OverrideBuilder::new(".").add("!target/").unwrap().build().unwrap())
+        .build();
+
+    for result in walk {
+        if let Ok(entry) = result {
+            if entry.path().is_dir() {
+                continue;
+            }
+            if ignore_matcher.matched(entry.path(), entry.file_type().unwrap().is_dir()).is_ignore() {
+                continue;
+            }
+            project_tree.push_str(&format!("- {}\n", entry.path().display()));
+        }
+    }
+
+    let mut diff_context = String::new();
+    diff_context.push_str(&project_tree);
+    diff_context.push_str("\nStaged changes:\n");
+
+    let mut current_chunk = String::new();
+    for file_diff in staged_diff.split("diff --git") {
+        if file_diff.trim().is_empty() {
+            continue;
+        }
+
+        if current_chunk.len() + file_diff.len() > max_tokens {
+            diff_context.push_str(&current_chunk);
+            current_chunk.clear();
+        }
+        current_chunk.push_str("diff --git");
+        current_chunk.push_str(file_diff);
+    }
+    diff_context.push_str(&current_chunk);
+
+    Ok(diff_context)
+}
 
 pub fn get_project_name() -> Result<String> {
     let output = run_git_command(&["rev-parse", "--show-toplevel"])?;
-    let repo_path_str = String::from_utf8(output.stdout)?.trim().to_string();
-    let repo_path = Path::new(&repo_path_str);
-    let project_name = repo_path
+    let repo_path = String::from_utf8(output.stdout)?.trim().to_string();
+    let project_name = std::path::Path::new(&repo_path)
         .file_name()
         .and_then(|s| s.to_str())
         .map(|s| s.to_string())
-        .ok_or_else(|| anyhow::anyhow!("无法获取项目名称"))?;
+        .context("Failed to get project name from path")?;
     Ok(project_name)
 }
 
 pub fn get_last_commit_message() -> Result<String> {
     let output = run_git_command(&["log", "-1", "--pretty=%B"])?;
-    let message = String::from_utf8(output.stdout)?.trim().to_string();
-    if message.is_empty() {
-        Err(anyhow::anyhow!("没有找到上一次的提交信息"))
-    } else {
-        Ok(message)
-    }
+    Ok(String::from_utf8(output.stdout)?.trim().to_string())
 }
+
 
 /// 项目上下文信息
 #[derive(Debug, Clone)]
@@ -55,202 +170,6 @@ pub struct DiffAnalysis {
 // 估算的字符到token的转换比例（粗略估计：1 token ≈ 3-4 个字符）
 const CHARS_PER_TOKEN: usize = 3;
 
-pub fn run_git_command(args: &[&str]) -> Result<Output> {
-    // 跨平台的 Git 命令调用
-    let git_cmd = if cfg!(windows) {
-        // Windows 上优先尝试 git.exe
-        "git.exe"
-    } else {
-        "git"
-    };
-
-    let output = Command::new(git_cmd).args(args).output().or_else(|_| {
-        // 如果失败，尝试另一种方式
-        let fallback_cmd = if cfg!(windows) { "git" } else { "git.exe" };
-        Command::new(fallback_cmd).args(args).output()
-    })?;
-
-    if output.status.success() {
-        Ok(output)
-    } else {
-        Err(anyhow::anyhow!(
-            "Git 命令执行失败 (退出码: {}):\n{}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr)
-        ))
-    }
-}
-
-/// 获取暂存区（staged）的代码变更，并应用 .gitignore 和 .matecode-ignore 的规则
-pub fn get_staged_diff() -> Result<String> {
-    // Determine the reference to compare against.
-    // If HEAD exists, use it. Otherwise, assume initial commit and use the empty tree.
-    let head_exists = run_git_command(&["rev-parse", "--verify", "HEAD"]).is_ok();
-    let parent_ref = if head_exists {
-        "HEAD"
-    } else {
-        // This is the magic number for an empty tree in Git, used for the initial commit.
-        "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
-    };
-
-    // 1. 获取所有暂存的文件名
-    let name_only_output = run_git_command(&[
-        "diff-index",
-        "--cached",
-        "--name-only",
-        "--no-renames",
-        parent_ref,
-    ])?;
-    let staged_files_raw = String::from_utf8_lossy(&name_only_output.stdout);
-    if staged_files_raw.trim().is_empty() {
-        return Ok(String::new());
-    }
-
-    // 2. 构建一个 Gitignore 匹配器
-    let mut builder = GitignoreBuilder::new(".");
-
-    // 添加用户自定义的忽略文件（从家目录的配置文件夹读取）
-    if let Ok(config_dir) = get_config_dir() {
-        let matecode_ignore_path = config_dir.join(".matecode-ignore");
-        if matecode_ignore_path.exists() {
-            builder.add(matecode_ignore_path);
-        }
-    }
-
-    // 添加硬编码的、内置的忽略规则
-    // todo: 后面可以考虑将这部分也做成可配置的
-    builder.add_line(None, "*.json")?;
-
-    let ignorer = builder.build()?;
-
-    // 3. 在内存中筛选需要 diff 的文件
-    let mut files_to_diff = Vec::new();
-    for file_path_str in staged_files_raw.lines() {
-        let file_path = Path::new(file_path_str);
-
-        let is_hidden = file_path
-            .components()
-            .any(|c| c.as_os_str().to_string_lossy().starts_with('.'));
-        if is_hidden {
-            println!("🚫 已忽略隐藏文件/目录: {file_path_str}");
-            continue;
-        }
-
-        let is_ignored = ignorer.matched(file_path, false).is_ignore();
-
-        if !is_ignored {
-            files_to_diff.push(file_path_str);
-        } else {
-            println!("🚫 已根据 .gitignore/.matecode-ignore 忽略文件: {file_path_str}");
-        }
-    }
-
-    // 4. 如果没有剩下任何文件，则返回空字符串
-    if files_to_diff.is_empty() {
-        return Ok(String::new());
-    }
-
-    // 5. 一次性调用 git diff 获取所有未被忽略的文件的变更
-    let mut command_args = vec![
-        "diff-index",
-        "--patch",
-        "--cached",
-        "--no-renames",
-        parent_ref,
-        "--",
-    ];
-    command_args.extend(files_to_diff);
-
-    let diff_output = run_git_command(&command_args)?;
-    let diff_string = String::from_utf8_lossy(&diff_output.stdout).to_string();
-
-    Ok(diff_string)
-}
-
-/// 生成项目目录树
-pub fn generate_project_tree() -> Result<String> {
-    let mut tree = String::new();
-    tree.push_str("项目结构：\n");
-    
-    // 获取项目根目录下的文件和目录
-    let root_path = Path::new(".");
-    generate_tree_recursive(root_path, &mut tree, "", 0, 3)?; // 限制深度为3
-    
-    Ok(tree)
-}
-
-fn generate_tree_recursive(
-    path: &Path,
-    tree: &mut String,
-    prefix: &str,
-    depth: usize,
-    max_depth: usize,
-) -> Result<()> {
-    if depth > max_depth {
-        return Ok(());
-    }
-
-    // 构建gitignore匹配器
-    let mut builder = GitignoreBuilder::new(".");
-    if let Ok(config_dir) = get_config_dir() {
-        let matecode_ignore_path = config_dir.join(".matecode-ignore");
-        if matecode_ignore_path.exists() {
-            builder.add(matecode_ignore_path);
-        }
-    }
-    let ignorer = builder.build()?;
-
-    let mut entries: Vec<_> = std::fs::read_dir(path)?
-        .filter_map(|entry| entry.ok())
-        .filter(|entry| {
-            let path = entry.path();
-            let file_name = path.file_name().unwrap().to_string_lossy();
-            
-            // 过滤掉一些不必要的文件和目录
-            if file_name.starts_with('.') && file_name != ".gitignore" {
-                return false;
-            }
-            if file_name == "target" || file_name == "node_modules" {
-                return false;
-            }
-            
-            // 检查是否被gitignore忽略
-            !ignorer.matched(&path, path.is_dir()).is_ignore()
-        })
-        .collect();
-
-    entries.sort_by(|a, b| {
-        // 目录优先，然后按名称排序
-        match (a.path().is_dir(), b.path().is_dir()) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => a.file_name().cmp(&b.file_name()),
-        }
-    });
-
-    for (i, entry) in entries.iter().enumerate() {
-        let is_last = i == entries.len() - 1;
-        let path = entry.path();
-        let file_name = path.file_name().unwrap().to_string_lossy();
-        
-        let current_prefix = if is_last { "└── " } else { "├── " };
-        tree.push_str(&format!("{}{}{}\n", prefix, current_prefix, file_name));
-        
-        if path.is_dir() && depth < max_depth {
-            let next_prefix = if is_last { "    " } else { "│   " };
-            generate_tree_recursive(
-                &path,
-                tree,
-                &format!("{}{}", prefix, next_prefix),
-                depth + 1,
-                max_depth,
-            )?;
-        }
-    }
-
-    Ok(())
-}
-
 /// 获取本次修改影响的文件列表
 pub fn get_affected_files() -> Result<Vec<String>> {
     let head_exists = run_git_command(&["rev-parse", "--verify", "HEAD"]).is_ok();
@@ -278,8 +197,8 @@ pub fn get_affected_files() -> Result<Vec<String>> {
 }
 
 /// 分析diff内容并进行分块处理
-pub fn analyze_diff(diff: &str, context_config: &crate::llm::ContextConfig) -> Result<DiffAnalysis> {
-    let project_tree = generate_project_tree()?;
+pub fn analyze_diff(diff: &str, context_config: &crate::config::ContextConfig) -> Result<DiffAnalysis> {
+    let project_tree = futures::executor::block_on(generate_project_tree())?;
     let affected_files = get_affected_files()?;
     let total_files = affected_files.len();
     
@@ -296,9 +215,8 @@ pub fn analyze_diff(diff: &str, context_config: &crate::llm::ContextConfig) -> R
                       estimate_token_count(&affected_files.join(", "));
     
     // 计算每个chunk的最大允许大小
-    let available_tokens = context_config.available_context_tokens();
-    let max_chunk_tokens = available_tokens.saturating_sub(context_size);
-    let max_chunk_chars = max_chunk_tokens * CHARS_PER_TOKEN;
+    let available_tokens = context_config.max_tokens.saturating_sub(context_size);
+    let max_chunk_chars = available_tokens * CHARS_PER_TOKEN;
     
     let needs_chunking = total_size > max_chunk_chars;
 
@@ -423,4 +341,91 @@ fn extract_file_path_from_diff_line(line: &str) -> Option<String> {
     } else {
         None
     }
+}
+
+
+/// 生成项目目录树
+pub async fn generate_project_tree() -> Result<String> {
+    let mut tree = String::new();
+    tree.push_str("项目结构：\n");
+    
+    // 获取项目根目录下的文件和目录
+    let root_path = std::path::Path::new(".");
+    generate_tree_recursive(root_path, &mut tree, "", 0, 3).await?; // 限制深度为3
+    
+    Ok(tree)
+}
+
+#[async_recursion]
+async fn generate_tree_recursive(
+    path: &std::path::Path,
+    tree: &mut String,
+    prefix: &str,
+    depth: usize,
+    max_depth: usize,
+) -> Result<()> {
+    if depth > max_depth {
+        return Ok(());
+    }
+
+    // 构建gitignore匹配器
+    let mut builder = ignore::gitignore::GitignoreBuilder::new(".");
+    if let Ok(config_dir) = get_config_dir().await {
+        let matecode_ignore_path = config_dir.join(".matecode-ignore");
+        if matecode_ignore_path.exists() {
+            builder.add(matecode_ignore_path);
+        }
+    }
+    let ignorer = builder.build()?;
+
+    let mut entries: Vec<_> = std::fs::read_dir(path)?
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| {
+            let path = entry.path();
+            let file_name = path.file_name().unwrap().to_string_lossy();
+            
+            // 过滤掉一些不必要的文件和目录
+            if file_name.starts_with('.') && file_name != ".gitignore" {
+                return false;
+            }
+            if file_name == "target" || file_name == "node_modules" {
+                return false;
+            }
+            
+            // 检查是否被gitignore忽略
+            !ignorer.matched(&path, path.is_dir()).is_ignore()
+        })
+        .collect();
+
+    entries.sort_by(|a, b| {
+        // 目录优先，然后按名称排序
+        match (a.path().is_dir(), b.path().is_dir()) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.file_name().cmp(&b.file_name()),
+        }
+    });
+
+    for (i, entry) in entries.iter().enumerate() {
+        let is_last = i == entries.len() - 1;
+        let path = entry.path();
+        let file_name = path.file_name().unwrap().to_string_lossy();
+        
+        let current_prefix = if is_last { "└── " } else { "├── " };
+        tree.push_str(&format!("{}{}{}\n", prefix, current_prefix, file_name));
+        
+        if path.is_dir() && depth < max_depth {
+            let next_prefix = if is_last { "    " } else { "│   " };
+            generate_tree_recursive(
+                &path,
+                tree,
+                &format!("{}{}", prefix, next_prefix),
+                depth + 1,
+                max_depth,
+            )
+            .await?;
+        }
+    }
+
+    Ok(())
 }

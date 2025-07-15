@@ -1,11 +1,15 @@
 //! src/config.rs
 
-use crate::llm::{GeminiClient, OpenClient, LLM};
-use anyhow::{anyhow, Result};
-use std::env;
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
+
+use crate::llm::gemini::GeminiClient;
+use crate::llm::openai::OpenAIClient;
+use crate::llm::LLM;
 
 /// 读取LLM_PROVIDER环境变量以确定使用哪个客户端。
 fn get_provider_name() -> String {
@@ -13,64 +17,96 @@ fn get_provider_name() -> String {
 }
 
 /// Factory功能，根据配置获取LLM客户端。
-pub fn get_llm_client() -> Result<LLM> {
-    let provider = get_provider_name();
-    match provider.as_str() {
-        "gemini" => Ok(LLM::Gemini(GeminiClient::new()?)),
-        "openai" => Ok(LLM::OpenAI(OpenClient::new()?)),
-        "ollama" => Ok(LLM::OpenAI(OpenClient::new()?)),
-        _ => Err(anyhow!("不支持的 LLM_PROVIDER: {}", provider)),
-    }
+pub fn get_llm_client() -> Result<LLM<'static>> {
+    let config = load_config()?;
+    crate::llm::create_llm_client(config.llm)
 }
 
-/// 获取遵循平台约定的matecode配置目录的路径。
-///
-/// - Windows: %APPDATA%\matecode
-/// - macOS: ~/Library/Application Support/matecode  
-/// - Linux: ~/.config/matecode
-pub fn get_config_dir() -> Result<PathBuf> {
+/// Returns the configuration directory path (~/.config/matecode).
+pub async fn get_config_dir() -> Result<PathBuf> {
     let config_dir = if cfg!(windows) {
         // Windows: %APPDATA%\matecode
-        dirs::config_dir()
-            .ok_or_else(|| anyhow!("无法找到配置目录"))?
-            .join("matecode")
-    } else if cfg!(target_os = "macos") {
-        // macOS: ~/Library/Application Support/matecode
-        dirs::config_dir()
-            .ok_or_else(|| anyhow!("无法找到配置目录"))?
-            .join("matecode")
+        dirs::data_dir()
+            .map(|p| p.join("matecode"))
+            .context("Could not get data directory")?
     } else {
-        // Linux: ~/.config/matecode
+        // Linux/macOS: ~/.config/matecode
         dirs::config_dir()
-            .ok_or_else(|| anyhow!("无法找到配置目录"))?
-            .join("matecode")
+            .map(|p| p.join("matecode"))
+            .context("Could not get config directory")?
     };
 
+    if !config_dir.exists() {
+        fs::create_dir_all(&config_dir)
+            .await
+            .context("Could not create config directory")?;
+    }
     Ok(config_dir)
 }
 
-/// 在`~/ `中创建默认的.env和. matcode -ignore文件。
-pub async fn create_default_config() -> Result<PathBuf> {
-    let config_dir = get_config_dir()?;
-    if !config_dir.exists() {
-        fs::create_dir_all(&config_dir).await?;
+/// Represents the main configuration for the application.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Config {
+    /// LLM provider settings.
+    pub llm: LLMConfig,
+    /// Configuration for context length and token limits.
+    pub context: ContextConfig,
+    /// The default LLM provider.
+    pub default_llm: String,
+}
+
+/// Defines the context window configuration.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ContextConfig {
+    /// The maximum number of tokens to use for the context.
+    pub max_tokens: usize,
+}
+
+/// Defines the LLM provider and model to use.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LLMConfig {
+    /// The name of the LLM provider (e.g., "openai", "gemini").
+    pub provider: String,
+    /// The specific model name to use (e.g., "gpt-4", "gemini-pro").
+    pub model: Option<String>,
+}
+
+/// Creates a default configuration file if one does not exist.
+pub async fn create_default_config() -> Result<()> {
+    let config_dir = get_config_dir().await?;
+    let config_path = config_dir.join("config.toml");
+    let default_config = Config {
+        default_llm: "openai".to_string(),
+        llm: LLMConfig {
+            provider: "openai".to_string(),
+            model: Some("gpt-4".to_string()),
+        },
+        context: ContextConfig {
+            max_tokens: 4096,
+        },
+    };
+
+    let config_content = toml::to_string(&default_config)?;
+    let mut file = fs::File::create(&config_path).await?;
+    file.write_all(config_content.as_bytes()).await?;
+
+    println!("Created default config file at {:?}", config_path);
+    Ok(())
+}
+
+pub async fn load_config() -> Result<Config> {
+    let config_dir = get_config_dir().await?;
+    let config_path = config_dir.join("config.toml");
+
+    if !config_path.exists() {
+        create_default_config().await?;
     }
 
-    // Create .env file
-    let env_path = config_dir.join(".env");
-    if !env_path.exists() {
-        let mut file = fs::File::create(&env_path).await?;
-        let content = b"# --- LLM Provider Configuration ---\nLLM_PROVIDER=\"gemini\" # \"openai\" or \"ollama\"\n\n# --- Gemini Configuration ---\nGEMINI_API_KEY=\"your_gemini_api_key_here\"\nGEMINI_MODEL_NAME=\"gemini-1.5-pro-latest\"\n\n# --- OpenAI/vLLM (Compatible) Configuration ---\n#OPENAI_API_KEY=\"your_openai_api_key_here\"\n#OPENAI_API_URL=\"https://api.openai.com/v1/chat/completions\"\n#OPENAI_MODEL_NAME=\"gpt-4-turbo\"\n\n# --- Ollama (Local) Configuration ---\n#OPENAI_API_KEY=\"ollama\" # The key can be any non-empty string\n#OPENAI_API_URL=\"http://localhost:11434/v1/chat/completions\"\n#OPENAI_MODEL_NAME=\"llama3\" # Replace with your desired local model\n";
-        file.write_all(content).await?;
-    }
+    let config_content = fs::read_to_string(config_path)
+        .await
+        .context("Could not read config file")?;
+    let config: Config =
+        toml::from_str(&config_content).context("Could not parse config file")?;
 
-    // Create .matecode-ignore
-    let ignore_path = config_dir.join(".matecode-ignore");
-    if !ignore_path.exists() {
-        let mut file = fs::File::create(&ignore_path).await?;
-        file.write_all(b"*.lock\n").await?;
-        file.write_all(b"*.log\n").await?;
-    }
-
-    Ok(config_dir)
+    Ok(config)
 }

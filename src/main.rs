@@ -4,10 +4,7 @@ use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
 use dialoguer::{theme::ColorfulTheme, Select, Confirm};
-use std::fs::File;
-use std::io::Write;
 use std::path::Path;
-use std::process::Command;
 
 mod cli;
 mod config;
@@ -40,22 +37,24 @@ async fn run() -> Result<()> {
     match cli.command {
         Commands::Commit { all } => {
             if all {
-                run_git_command(&["add", "-u"])?;
+                run_git_command(&["add", "-u"])
+                    .context("Failed to stage all tracked files.")?;
                 println!("{}", "Staged all tracked files.".green());
             }
-
+            
             loop {
-                let diff = get_staged_diff()?;
+                let diff = git::get_staged_diff()
+                    .context("Failed to get staged git diff.")?;
 
                 if diff.is_empty() {
                     println!("{}", "No staged changes found.".yellow());
                     return Ok(());
                 }
-
+    
                 let llm_client = config::get_llm_client()?;
                 let mut commit_message = generate_commit_message(&llm_client, &diff).await?;
                 commit_message = commit_message.replace('`', "'");
-
+    
                 println!("\n{}\n", "=".repeat(60));
                 println!("{}", commit_message.cyan());
                 println!("{}\n", "=".repeat(60));
@@ -82,15 +81,14 @@ async fn run() -> Result<()> {
                             cmd_args.push("-m");
                             cmd_args.push(line);
                         }
-                        run_git_command(&cmd_args)?;
+                        run_git_command(&cmd_args)
+                            .context("Failed to execute git commit.")?;
                         println!("🚀 提交成功！");
                         break;
                     }
                     1 => {
                         // 编辑后提交
-                        let edited_message = edit::Builder::new()
-                            .editor("vim")
-                            .edit(&commit_message)?;
+                        let edited_message = edit::edit(&commit_message)?;
 
                         if edited_message.trim().is_empty() {
                             println!("编辑后的消息为空，提交已中止。");
@@ -113,7 +111,8 @@ async fn run() -> Result<()> {
                                 cmd_args.push("-m");
                                 cmd_args.push(line);
                             }
-                            run_git_command(&cmd_args)?;
+                            run_git_command(&cmd_args)
+                                .context("Failed to execute git commit after editing.")?;
                             println!("🚀 提交成功！");
                         } else {
                             println!("好的，提交已取消。");
@@ -134,15 +133,54 @@ async fn run() -> Result<()> {
                 }
             }
         },
-        Commands::Report { .. } => {
+        Commands::Report { since, until } => {
+            let now = chrono::Local::now().date_naive();
+
+            let start_date = since
+                .and_then(|s| dateparser::parse(&s).ok())
+                .map(|dt| dt.date_naive())
+                .unwrap_or(now);
+
+            let end_date = until
+                .and_then(|s| dateparser::parse(&s).ok())
+                .map(|dt| dt.date_naive())
+                .unwrap_or(now);
+            
+            let all_commits = history::get_all_commits_in_range(start_date, end_date).await
+                .context("Failed to get commit history for the report.")?;
+
+            if all_commits.is_empty() {
+                println!("{}", "在此日期范围内没有找到任何提交记录。".yellow());
+                return Ok(());
+            }
+
             let llm_client = config::get_llm_client()?;
-            let report = llm::generate_daily_report(&llm_client).await?;
+            let report = llm::generate_report_from_commits(&llm_client, &all_commits, start_date, end_date).await?;
             println!("{report}");
+        }
+        Commands::Review => {
+            let diff = get_staged_diff()
+                .context("Failed to get staged git diff for review.")?;
+
+            if diff.is_empty() {
+                println!("{}", "没有需要审查的暂存更改。".yellow());
+                return Ok(());
+            }
+
+            println!("🤖 正在审查您的代码，请稍候...");
+
+            let llm_client = config::get_llm_client()?;
+            let review = llm::generate_code_review(&llm_client, &diff).await?;
+            
+            println!("\n{}\n", "=".repeat(60));
+            println!("📝 AI 代码审查报告:");
+            println!("{}\n", "=".repeat(60));
+            println!("{}", review);
         }
         Commands::Init => {
             let config_path = config::create_default_config()
                 .await
-                .expect("Failed to create default config");
+                .context("Failed to initialize configuration.")?;
             println!(
                 "{}{}{}",
                 "配置文件初始化成功，位于 ".green(),
@@ -151,9 +189,12 @@ async fn run() -> Result<()> {
             );
         }
         Commands::Archive => {
-            let project_name = git::get_project_name()?;
-            let commit_message = git::get_last_commit_message()?;
-            history::archive_commit_message(&project_name, &commit_message)?;
+            let project_name = git::get_project_name()
+                .context("Failed to get project name for archiving.")?;
+            let commit_message = git::get_last_commit_message()
+                .context("Failed to get last commit message for archiving.")?;
+            history::archive_commit_message(&project_name, &commit_message).await
+                .context("Failed to archive commit message.")?;
             // 注意：此处不再直接归档
         }
         Commands::InstallHook => {
