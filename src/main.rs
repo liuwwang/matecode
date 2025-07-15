@@ -47,7 +47,8 @@ async fn run() -> Result<()> {
             }
 
             let llm_client = config::get_llm_client()?;
-            let commit_message = generate_commit_message(&llm_client, &diff).await?;
+            let mut commit_message = generate_commit_message(&llm_client, &diff).await?;
+            commit_message = commit_message.replace('`', "'");
 
             println!("\n{}\n", "=".repeat(60));
             println!("{}", commit_message.cyan());
