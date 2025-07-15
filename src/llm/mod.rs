@@ -170,7 +170,7 @@ async fn generate_final_commit_message(
         .map(|(i, summary)| format!("{}. {}", i + 1, summary))
         .collect::<Vec<_>>()
         .join("\n");
-    
+
     let user_prompt = format!(
         r#"请根据以下的项目上下文和代码变更摘要，为我生成一个高质量的、人类可读的中文 git commit message。
 

@@ -95,7 +95,7 @@ async fn run() -> Result<()> {
                         println!("🚀 提交成功！");
                     } else {
                         println!("提交已中止。");
-                    }
+        }
                     break;
                 }
                 2 => {
