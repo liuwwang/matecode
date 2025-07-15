@@ -7,12 +7,12 @@ use std::path::PathBuf;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
-/// Reads the LLM_PROVIDER environment variable to determine which client to use.
+/// 读取LLM_PROVIDER环境变量以确定使用哪个客户端。
 fn get_provider_name() -> String {
     env::var("LLM_PROVIDER").unwrap_or_else(|_| "gemini".to_string())
 }
 
-/// Factory function to get an LLM client based on the configuration.
+/// Factory功能，根据配置获取LLM客户端。
 pub fn get_llm_client() -> Result<LLM> {
     let provider = get_provider_name();
     match provider.as_str() {
@@ -23,7 +23,7 @@ pub fn get_llm_client() -> Result<LLM> {
     }
 }
 
-/// Gets the path to the matecode config directory following platform conventions.
+/// 获取遵循平台约定的matecode配置目录的路径。
 ///
 /// - Windows: %APPDATA%\matecode
 /// - macOS: ~/Library/Application Support/matecode  
@@ -49,7 +49,7 @@ pub fn get_config_dir() -> Result<PathBuf> {
     Ok(config_dir)
 }
 
-/// Creates the default .env and .matecode-ignore files in `~/.matecode_config/` if they don't exist.
+/// 在`~/ `中创建默认的.env和. matcode -ignore文件。
 pub async fn create_default_config() -> Result<PathBuf> {
     let config_dir = get_config_dir()?;
     if !config_dir.exists() {
