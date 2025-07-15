@@ -88,7 +88,9 @@ async fn run() -> Result<()> {
                     }
                     1 => {
                         // 编辑后提交
-                        let edited_message = edit::edit(&commit_message)?;
+                        let edited_message = edit::Builder::new()
+                            .editor("vim")
+                            .edit(&commit_message)?;
 
                         if edited_message.trim().is_empty() {
                             println!("编辑后的消息为空，提交已中止。");
