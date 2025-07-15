@@ -21,15 +21,18 @@ async-trait = "0.1.80"
 chrono = { version = "0.4.38", features = ["serde"] }
 clap = { version = "4.5.7", features = ["derive"] }
 colored = "2.1.0"
-dialoguer = { version = "0.11.0", features = ["fuzzy-select"] }
+config = "0.14.0"
+dialoguer = "0.11.0"
 dirs = "5.0.1"
 dotenvy = "0.15.7"
+edit = "0.1.4"
 ignore = "0.4.22"
 indicatif = "0.17.8"
 reqwest = { version = "0.12.5", features = ["json", "socks", "trust-dns"] }
-serde = { version = "1.0.203", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.117"
 tokio = { version = "1.38.0", features = ["full"] }
+thiserror = "1.0.61"
 
 # 平台特定依赖
 [target.'cfg(windows)'.dependencies]

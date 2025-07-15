@@ -3,7 +3,7 @@
 use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
-use dialoguer::{theme::ColorfulTheme, Select};
+use dialoguer::{theme::ColorfulTheme, Select, Confirm};
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
@@ -88,21 +88,34 @@ async fn run() -> Result<()> {
                     }
                     1 => {
                         // 编辑后提交
-                        let git_dir =
-                            String::from_utf8(run_git_command(&["rev-parse", "--git-dir"])?.stdout)?
-                                .trim()
-                                .to_string();
-                        let commit_editmsg_path = Path::new(&git_dir).join("COMMIT_EDITMSG");
-                        let mut file = File::create(&commit_editmsg_path)?;
-                        file.write_all(commit_message.as_bytes())?;
-                        
-                        let status = Command::new("git").arg("commit").arg("-e").status()?;
+                        let edited_message = edit::edit(&commit_message)?;
 
-                        if status.success() {
+                        if edited_message.trim().is_empty() {
+                            println!("编辑后的消息为空，提交已中止。");
+                            break;
+                        }
+                        
+                        println!("\n📝 这是您编辑后的提交信息:\n");
+                        println!("{}\n", "=".repeat(60));
+                        println!("{}", edited_message.cyan());
+                        println!("{}\n", "=".repeat(60));
+
+                        if Confirm::with_theme(&ColorfulTheme::default())
+                            .with_prompt("确认要提交吗?")
+                            .default(true)
+                            .interact()?
+                        {
+                            let lines: Vec<&str> = edited_message.lines().collect();
+                            let mut cmd_args: Vec<&str> = vec!["commit"];
+                            for line in &lines {
+                                cmd_args.push("-m");
+                                cmd_args.push(line);
+                            }
+                            run_git_command(&cmd_args)?;
                             println!("🚀 提交成功！");
                         } else {
-                            println!("提交已中止。");
-        }
+                            println!("好的，提交已取消。");
+                        }
                         break;
                     }
                     2 => {
