@@ -5,6 +5,28 @@ use ignore::gitignore::GitignoreBuilder;
 use std::path::Path;
 use std::process::{Command, Output};
 
+pub fn get_project_name() -> Result<String> {
+    let output = run_git_command(&["rev-parse", "--show-toplevel"])?;
+    let repo_path_str = String::from_utf8(output.stdout)?.trim().to_string();
+    let repo_path = Path::new(&repo_path_str);
+    let project_name = repo_path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| anyhow::anyhow!("无法获取项目名称"))?;
+    Ok(project_name)
+}
+
+pub fn get_last_commit_message() -> Result<String> {
+    let output = run_git_command(&["log", "-1", "--pretty=%B"])?;
+    let message = String::from_utf8(output.stdout)?.trim().to_string();
+    if message.is_empty() {
+        Err(anyhow::anyhow!("没有找到上一次的提交信息"))
+    } else {
+        Ok(message)
+    }
+}
+
 /// 项目上下文信息
 #[derive(Debug, Clone)]
 pub struct ProjectContext {
@@ -30,11 +52,10 @@ pub struct DiffAnalysis {
     pub needs_chunking: bool,
 }
 
-// 最大上下文长度（字符数）- 考虑到模型的token限制
-const MAX_CONTEXT_LENGTH: usize = 10000;
-const MAX_CHUNK_SIZE: usize = 8000;
+// 估算的字符到token的转换比例（粗略估计：1 token ≈ 3-4 个字符）
+const CHARS_PER_TOKEN: usize = 3;
 
-fn run_git_command(args: &[&str]) -> Result<Output> {
+pub fn run_git_command(args: &[&str]) -> Result<Output> {
     // 跨平台的 Git 命令调用
     let git_cmd = if cfg!(windows) {
         // Windows 上优先尝试 git.exe
@@ -111,7 +132,7 @@ pub fn get_staged_diff() -> Result<String> {
             .components()
             .any(|c| c.as_os_str().to_string_lossy().starts_with('.'));
         if is_hidden {
-            println!("ℹ️  已忽略隐藏文件/目录: {file_path_str}");
+            println!("🚫 已忽略隐藏文件/目录: {file_path_str}");
             continue;
         }
 
@@ -120,7 +141,7 @@ pub fn get_staged_diff() -> Result<String> {
         if !is_ignored {
             files_to_diff.push(file_path_str);
         } else {
-            println!("ℹ️  已根据 .gitignore/.matecode-ignore 忽略文件: {file_path_str}");
+            println!("🚫 已根据 .gitignore/.matecode-ignore 忽略文件: {file_path_str}");
         }
     }
 
@@ -257,22 +278,32 @@ pub fn get_affected_files() -> Result<Vec<String>> {
 }
 
 /// 分析diff内容并进行分块处理
-pub fn analyze_diff(diff: &str) -> Result<DiffAnalysis> {
+pub fn analyze_diff(diff: &str, context_config: &crate::llm::ContextConfig) -> Result<DiffAnalysis> {
     let project_tree = generate_project_tree()?;
     let affected_files = get_affected_files()?;
     let total_files = affected_files.len();
     
     let context = ProjectContext {
-        project_tree,
+        project_tree: project_tree.clone(),
         affected_files: affected_files.clone(),
         total_files,
     };
 
     let total_size = diff.len();
-    let needs_chunking = total_size > MAX_CONTEXT_LENGTH;
+    
+    // 计算项目上下文所需的token数
+    let context_size = estimate_token_count(&project_tree) + 
+                      estimate_token_count(&affected_files.join(", "));
+    
+    // 计算每个chunk的最大允许大小
+    let available_tokens = context_config.available_context_tokens();
+    let max_chunk_tokens = available_tokens.saturating_sub(context_size);
+    let max_chunk_chars = max_chunk_tokens * CHARS_PER_TOKEN;
+    
+    let needs_chunking = total_size > max_chunk_chars;
 
     let chunks = if needs_chunking {
-        split_diff_into_chunks(diff, &affected_files)?
+        split_diff_by_size(diff, max_chunk_chars)?
     } else {
         vec![DiffChunk {
             content: diff.to_string(),
@@ -289,42 +320,58 @@ pub fn analyze_diff(diff: &str) -> Result<DiffAnalysis> {
     })
 }
 
-/// 将diff内容分块
-fn split_diff_into_chunks(diff: &str, affected_files: &[String]) -> Result<Vec<DiffChunk>> {
+/// 估算文本的token数量
+fn estimate_token_count(text: &str) -> usize {
+    text.len() / CHARS_PER_TOKEN
+}
+
+/// 按大小将diff内容分块，并格式化输出
+fn split_diff_by_size(diff: &str, max_chunk_size: usize) -> Result<Vec<DiffChunk>> {
     let mut chunks = Vec::new();
     let lines: Vec<&str> = diff.lines().collect();
     
     let mut current_chunk = String::new();
     let mut current_files = Vec::new();
+    let mut i = 0;
     
-    for line in lines {
+    // 添加chunk头部
+    current_chunk.push_str("=== 代码变更详情 ===\n\n");
+    
+    while i < lines.len() {
+        let line = lines[i];
+        
         // 检查是否是新文件的开始
         if line.starts_with("diff --git") {
-            // 如果当前chunk不为空，保存它
-            if !current_chunk.is_empty() && current_chunk.len() > 100 {
-                let chunk_size = current_chunk.len();
-                chunks.push(DiffChunk {
-                    content: current_chunk.clone(),
-                    files: current_files.clone(),
-                    size: chunk_size,
-                });
-                current_chunk.clear();
-                current_files.clear();
-            }
-            
             // 提取文件名
             if let Some(file_path) = extract_file_path_from_diff_line(line) {
                 if !current_files.contains(&file_path) {
-                    current_files.push(file_path);
+                    current_files.push(file_path.clone());
                 }
+                
+                // 添加格式化的文件分隔符
+                let file_header = format!("\n📁 文件: {}\n{}\n", file_path, "=".repeat(50));
+                
+                // 检查是否会超过限制
+                if current_chunk.len() + file_header.len() > max_chunk_size && !current_chunk.is_empty() {
+                    let chunk_size = current_chunk.len();
+                    chunks.push(DiffChunk {
+                        content: current_chunk.clone(),
+                        files: current_files.clone(),
+                        size: chunk_size,
+                    });
+                    current_chunk.clear();
+                    current_files.clear();
+                    current_chunk.push_str("=== 代码变更详情 ===\n\n");
+                }
+                
+                current_chunk.push_str(&file_header);
             }
         }
         
-        current_chunk.push_str(line);
-        current_chunk.push('\n');
+        let line_with_newline = format!("{}\n", line);
         
-        // 如果当前chunk太大，分割它
-        if current_chunk.len() > MAX_CHUNK_SIZE {
+        // 如果添加这一行会超过大小限制，并且当前chunk不为空，则创建一个新chunk
+        if current_chunk.len() + line_with_newline.len() > max_chunk_size && !current_chunk.is_empty() {
             let chunk_size = current_chunk.len();
             chunks.push(DiffChunk {
                 content: current_chunk.clone(),
@@ -333,7 +380,11 @@ fn split_diff_into_chunks(diff: &str, affected_files: &[String]) -> Result<Vec<D
             });
             current_chunk.clear();
             current_files.clear();
+            current_chunk.push_str("=== 代码变更详情 ===\n\n");
         }
+        
+        current_chunk.push_str(&line_with_newline);
+        i += 1;
     }
     
     // 添加最后一个chunk
@@ -348,9 +399,10 @@ fn split_diff_into_chunks(diff: &str, affected_files: &[String]) -> Result<Vec<D
     
     // 如果没有产生任何chunk，创建一个包含所有内容的chunk
     if chunks.is_empty() {
+        let formatted_diff = format!("=== 代码变更详情 ===\n\n{}", diff);
         chunks.push(DiffChunk {
-            content: diff.to_string(),
-            files: affected_files.to_vec(),
+            content: formatted_diff,
+            files: get_affected_files().unwrap_or_default(),
             size: diff.len(),
         });
     }

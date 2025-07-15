@@ -9,20 +9,17 @@ pub struct Cli {
     pub command: Commands,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Debug, Subcommand)]
 pub enum Commands {
-    /// Commits the staged changes with a generated message.
-    Commit {
-        /// Optional: Add a scope to the commit message.
-        #[clap(short, long)]
-        scope: Option<String>,
-    },
-    /// Generates a report of the work done today.
-    Report {
-        /// Optional: Specify the author to generate the report for.
-        #[clap(short, long)]
-        author: Option<String>,
-    },
-    /// Initializes matecode's configuration.
+    /// 生成并打印提交信息
+    Commit,
+    /// 生成并打印日报
+    Report,
+    /// 初始化 matecode 配置文件
     Init,
+    /// [内部使用] 归档上一次的提交信息，用于 git hook
+    Archive,
+
+    /// 安装 git hook
+    InstallHook,
 }

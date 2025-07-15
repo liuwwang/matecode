@@ -64,6 +64,33 @@ impl LLMClient for GeminiClient {
         "Gemini"
     }
 
+    fn context_config(&self) -> super::ContextConfig {
+        // 根据不同的Gemini模型返回不同的配置
+        match self.model_name.as_str() {
+            "gemini-1.5-pro" => super::ContextConfig {
+                max_tokens: 2_000_000, // 2M tokens
+                max_output_tokens: 8_192,
+                reserved_tokens: 3_000,
+            },
+            "gemini-1.5-flash" => super::ContextConfig {
+                max_tokens: 1_000_000, // 1M tokens
+                max_output_tokens: 8_192,
+                reserved_tokens: 2_000,
+            },
+            "gemini-pro" => super::ContextConfig {
+                max_tokens: 30_720,
+                max_output_tokens: 2_048,
+                reserved_tokens: 1_500,
+            },
+            // 默认配置（保守估计）
+            _ => super::ContextConfig {
+                max_tokens: 30_720,
+                max_output_tokens: 2_048,
+                reserved_tokens: 1_500,
+            },
+        }
+    }
+
     async fn call(&self, _system_prompt: &str, user_prompt: &str) -> Result<String> {
         let client = Client::new();
         let api_url = format!(

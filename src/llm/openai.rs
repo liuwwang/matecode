@@ -66,6 +66,33 @@ impl LLMClient for OpenClient {
         "OpenAI"
     }
 
+    fn context_config(&self) -> super::ContextConfig {
+        // 根据不同的OpenAI模型返回不同的配置
+        match self.model_name.as_str() {
+            "gpt-4-turbo" | "gpt-4-turbo-2024-04-09" => super::ContextConfig {
+                max_tokens: 128_000,
+                max_output_tokens: 4_096,
+                reserved_tokens: 2_000, // 为系统prompt和输出预留
+            },
+            "gpt-4" | "gpt-4-0613" => super::ContextConfig {
+                max_tokens: 8_192,
+                max_output_tokens: 4_096,
+                reserved_tokens: 1_500,
+            },
+            "gpt-3.5-turbo" | "gpt-3.5-turbo-0125" => super::ContextConfig {
+                max_tokens: 16_385,
+                max_output_tokens: 4_096,
+                reserved_tokens: 1_500,
+            },
+            // 默认配置（保守估计）
+            _ => super::ContextConfig {
+                max_tokens: 8_192,
+                max_output_tokens: 4_096,
+                reserved_tokens: 1_500,
+            },
+        }
+    }
+
     async fn call(&self, system_prompt: &str, user_prompt: &str) -> Result<String> {
         let client = Client::new();
 

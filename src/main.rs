@@ -10,6 +10,8 @@ use std::time::Duration;
 mod cli;
 mod config;
 mod git;
+mod history;
+mod hook;
 mod llm;
 
 use cli::{Cli, Commands};
@@ -60,7 +62,9 @@ async fn run() -> Result<()> {
             println!("{commit_message}");
         }
         Commands::Report { .. } => {
-            println!("{}", "Report 命令暂未实现。".yellow());
+            let llm_client = config::get_llm_client()?;
+            let report = llm::generate_daily_report(&llm_client).await?;
+            println!("{report}");
         }
         Commands::Init => {
             let config_path = config::create_default_config()
@@ -72,6 +76,17 @@ async fn run() -> Result<()> {
                 config_path.to_str().unwrap().green(),
                 "/".green()
             );
+        }
+        Commands::Archive => {
+            let project_name = git::get_project_name()?;
+            let commit_message = git::get_last_commit_message()?;
+            history::archive_commit_message(&project_name, &commit_message)?;
+            // 注意：此处不再直接归档
+        }
+        Commands::InstallHook => {
+            if let Err(e) = hook::install_post_commit_hook() {
+                eprintln!("{} {}", "钩子安装失败:".red(), e.to_string().red());
+            }
         }
     }
 
