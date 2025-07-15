@@ -38,78 +38,85 @@ async fn run() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Commit => loop {
-            let diff = get_staged_diff()?;
-
-            if diff.is_empty() {
-                println!("{}", "No staged changes found.".yellow());
-                return Ok(());
+        Commands::Commit { all } => {
+            if all {
+                run_git_command(&["add", "-u"])?;
+                println!("{}", "Staged all tracked files.".green());
             }
 
-            let llm_client = config::get_llm_client()?;
-            let mut commit_message = generate_commit_message(&llm_client, &diff).await?;
-            commit_message = commit_message.replace('`', "'");
+            loop {
+                let diff = get_staged_diff()?;
 
-            println!("\n{}\n", "=".repeat(60));
-            println!("{}", commit_message.cyan());
-            println!("{}\n", "=".repeat(60));
-
-            let options = &[
-                "✅ 直接提交 (Apply)",
-                "📝 编辑后提交 (Edit)",
-                "🔄 重新生成 (Regenerate)",
-                "❌ 退出 (Quit)",
-            ];
-
-            let selection = Select::with_theme(&ColorfulTheme::default())
-                .with_prompt("您想如何处理这条提交信息？")
-                .items(&options[..])
-                .default(0)
-                .interact()?;
-
-            match selection {
-                0 => {
-                    // 直接提交
-                    let lines: Vec<&str> = commit_message.lines().collect();
-                    let mut cmd_args: Vec<&str> = vec!["commit"];
-                    for line in &lines {
-                        cmd_args.push("-m");
-                        cmd_args.push(line);
-                    }
-                    run_git_command(&cmd_args)?;
-                    println!("🚀 提交成功！");
-                    break;
+                if diff.is_empty() {
+                    println!("{}", "No staged changes found.".yellow());
+                    return Ok(());
                 }
-                1 => {
-                    // 编辑后提交
-                    let git_dir =
-                        String::from_utf8(run_git_command(&["rev-parse", "--git-dir"])?.stdout)?
-                            .trim()
-                            .to_string();
-                    let commit_editmsg_path = Path::new(&git_dir).join("COMMIT_EDITMSG");
-                    let mut file = File::create(&commit_editmsg_path)?;
-                    file.write_all(commit_message.as_bytes())?;
-                    
-                    let status = Command::new("git").arg("commit").arg("-e").status()?;
 
-                    if status.success() {
+                let llm_client = config::get_llm_client()?;
+                let mut commit_message = generate_commit_message(&llm_client, &diff).await?;
+                commit_message = commit_message.replace('`', "'");
+
+                println!("\n{}\n", "=".repeat(60));
+                println!("{}", commit_message.cyan());
+                println!("{}\n", "=".repeat(60));
+
+                let options = &[
+                    "✅ 直接提交 (Apply)",
+                    "📝 编辑后提交 (Edit)",
+                    "🔄 重新生成 (Regenerate)",
+                    "❌ 退出 (Quit)",
+                ];
+
+                let selection = Select::with_theme(&ColorfulTheme::default())
+                    .with_prompt("您想如何处理这条提交信息？")
+                    .items(&options[..])
+                    .default(0)
+                    .interact()?;
+
+                match selection {
+                    0 => {
+                        // 直接提交
+                        let lines: Vec<&str> = commit_message.lines().collect();
+                        let mut cmd_args: Vec<&str> = vec!["commit"];
+                        for line in &lines {
+                            cmd_args.push("-m");
+                            cmd_args.push(line);
+                        }
+                        run_git_command(&cmd_args)?;
                         println!("🚀 提交成功！");
-                    } else {
-                        println!("提交已中止。");
+                        break;
+                    }
+                    1 => {
+                        // 编辑后提交
+                        let git_dir =
+                            String::from_utf8(run_git_command(&["rev-parse", "--git-dir"])?.stdout)?
+                                .trim()
+                                .to_string();
+                        let commit_editmsg_path = Path::new(&git_dir).join("COMMIT_EDITMSG");
+                        let mut file = File::create(&commit_editmsg_path)?;
+                        file.write_all(commit_message.as_bytes())?;
+                        
+                        let status = Command::new("git").arg("commit").arg("-e").status()?;
+
+                        if status.success() {
+                            println!("🚀 提交成功！");
+                        } else {
+                            println!("提交已中止。");
         }
-                    break;
+                        break;
+                    }
+                    2 => {
+                        // 重新生成
+                        println!("🔄 好的，正在为您重新生成...");
+                        continue;
+                    }
+                    3 => {
+                        // 退出
+                        println!("好的，操作已取消。");
+                        break;
+                    }
+                    _ => unreachable!(),
                 }
-                2 => {
-                    // 重新生成
-                    println!("🔄 好的，正在为您重新生成...");
-                    continue;
-                }
-                3 => {
-                    // 退出
-                    println!("好的，操作已取消。");
-                    break;
-                }
-                _ => unreachable!(),
             }
         },
         Commands::Report { .. } => {
