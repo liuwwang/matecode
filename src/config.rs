@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
@@ -46,6 +46,9 @@ pub struct Config {
     pub language: String,
     /// LLM provider settings.
     pub llm: LLMProviders,
+    /// Linter commands for different languages.
+    #[serde(default = "default_linters")]
+    pub lint: HashMap<String, String>,
 }
 
 /// Defines the context window configuration for different models.
@@ -133,15 +136,16 @@ pub async fn create_default_config() -> Result<()> {
                     proxy: None,
                 }),
             },
+            lint: default_linters(),
         };
 
         let config_content = toml::to_string_pretty(&default_config)?;
         let mut file = fs::File::create(&config_path).await?;
         file.write_all(config_content.as_bytes()).await?;
         
-        println!("✅ 已创建默认配置文件: {:?}", config_path);
+        println!("✅ 已创建默认配置文件: {config_path:?}");
     } else {
-        println!("⚠️  配置文件已存在，跳过创建: {:?}", config_path);
+        println!("⚠️  配置文件已存在，跳过创建: {config_path:?}");
     }
 
     // 创建默认提示词模板（只在不存在时创建）
@@ -150,7 +154,7 @@ pub async fn create_default_config() -> Result<()> {
     // 创建默认 .matecode-ignore 文件
     create_default_ignore_file(&config_dir).await?;
 
-    println!("✅ 已创建提示词模板目录: {:?}", prompts_dir);
+    println!("✅ 已创建提示词模板目录: {prompts_dir:?}");
     println!("\n📝 请编辑配置文件，设置您的 API 密钥:");
     println!("   {}", config_path.display());
     println!("\n💡 提示：私有化部署模型会自动使用 'default' 配置，无需手动添加每个模型。");
@@ -158,16 +162,16 @@ pub async fn create_default_config() -> Result<()> {
     Ok(())
 }
 
-async fn create_default_ignore_file(config_dir: &PathBuf) -> Result<()> {
+async fn create_default_ignore_file(config_dir: &Path) -> Result<()> {
     let ignore_file_path = config_dir.join(".matecode-ignore");
     
     // 只在文件不存在时才创建
     if !ignore_file_path.exists() {
         let ignore_content = get_default_ignore_content();
         fs::write(&ignore_file_path, ignore_content).await?;
-        println!("✅ 已创建默认忽略文件: {:?}", ignore_file_path);
+        println!("✅ 已创建默认忽略文件: {ignore_file_path:?}");
     } else {
-        println!("⚠️  忽略文件已存在，跳过创建: {:?}", ignore_file_path);
+        println!("⚠️  忽略文件已存在，跳过创建: {ignore_file_path:?}");
     }
     
     Ok(())
@@ -319,7 +323,7 @@ fn validate_config(config: &Config) -> Result<()> {
     Ok(())
 }
 
-async fn create_default_prompts(prompts_dir: &PathBuf) -> Result<()> {
+async fn create_default_prompts(prompts_dir: &Path) -> Result<()> {
     // 定义所有提示词模板
     let prompt_templates = vec![
         ("commit.toml", get_commit_prompt_template()),
@@ -335,9 +339,9 @@ async fn create_default_prompts(prompts_dir: &PathBuf) -> Result<()> {
         // 只在文件不存在时才创建
         if !file_path.exists() {
             fs::write(&file_path, content).await?;
-            println!("✅ 已创建提示词模板: {:?}", file_path);
+            println!("✅ 已创建提示词模板: {file_path:?}");
         } else {
-            println!("⚠️  提示词模板已存在，跳过创建: {:?}", file_path);
+            println!("⚠️  提示词模板已存在，跳过创建: {file_path:?}");
         }
     }
 
@@ -398,6 +402,8 @@ fn get_review_prompt_template() -> &'static str {
 
 [user]
 请审查以下代码变更，重点关注以下几个方面：
+
+<lint_results></lint_results>
 
 ```diff
 {diff_content}
@@ -568,12 +574,11 @@ feat(history): 引入提交历史归档与日报生成功能
 
 pub async fn get_prompt_template(name: &str) -> Result<String> {
     let config_dir = get_config_dir().await?;
-    let prompt_path = config_dir.join("prompts").join(format!("{}.toml", name));
+    let prompt_path = config_dir.join("prompts").join(format!("{name}.toml"));
     
     if !prompt_path.exists() {
         return Err(anyhow::anyhow!(
-            "提示词模板文件不存在: {}。请运行 'matecode init' 重新创建。",
-            prompt_path.display()
+            "提示词模板文件不存在: {prompt_path:?}。请运行 'matecode init' 重新创建。",
         ));
     }
 
@@ -601,6 +606,18 @@ fn get_language_instruction(language: &str) -> String {
         "it-IT" => "Si prega di rispondere in italiano. Tutti i contenuti di output dovrebbero essere in italiano, comprese le descrizioni dei termini tecnici.".to_string(),
         "pt-BR" => "Por favor, responda em português. Todo o conteúdo de saída deve estar em português, incluindo descrições de termos técnicos.".to_string(),
         "ru-RU" => "Пожалуйста, отвечайте на русском языке. Все выходные данные должны быть на русском языке, включая описания технических терминов.".to_string(),
-        _ => format!("Please respond in the language: {}. All output content should be in this language, including technical terms and explanations.", language),
+        _ => format!("Please respond in the language: {language}. All output content should be in this language, including technical terms and explanations."),
     }
+}
+
+fn default_linters() -> HashMap<String, String> {
+    let mut linters = HashMap::new();
+    linters.insert("rust".to_string(), "cargo clippy -- -D warnings".to_string());
+    linters.insert("python".to_string(), "ruff check .".to_string());
+    linters.insert("javascript".to_string(), "eslint .".to_string());
+    linters.insert("typescript".to_string(), "eslint .".to_string());
+    linters.insert("go".to_string(), "go vet ./...".to_string());
+    linters.insert("java".to_string(), "# (需要配置) e.g., checkstyle -c /path/to/google_checks.xml .".to_string());
+    linters.insert("cpp".to_string(), "# (需要配置) e.g., clang-tidy **/*.cpp --".to_string());
+    linters
 }

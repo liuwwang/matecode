@@ -27,7 +27,7 @@ pub async fn archive_commit_message(project_name: &str, message: &str) -> Result
     }
 
     let date_str = chrono::Local::now().format("%Y-%m-%d").to_string();
-    let file_path = project_history_dir.join(format!("{}.md", date_str));
+    let file_path = project_history_dir.join(format!("{date_str}.md"));
 
     let mut existing_content = if file_path.exists() {
         fs::read_to_string(&file_path)

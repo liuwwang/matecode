@@ -90,10 +90,8 @@ async fn generate_chunked_commit_message(
     progress_bar.set_message("Summarizing chunks...");
 
     let summaries_stream = stream::iter(analysis.chunks.iter().map(|chunk| {
-        let client = client;
-        let context = &analysis.context;
         async move {
-            summarize_chunk(client, context, chunk).await
+            summarize_chunk(client, &analysis.context, chunk).await
         }
     }));
     
@@ -169,6 +167,7 @@ pub async fn generate_report_from_commits(
 pub async fn generate_code_review(
     client: &dyn LLMClient,
     diff: &str,
+    lint_result: Option<&str>,
 ) -> Result<String> {
     let template = get_prompt_template("review").await?;
     let (system_prompt, user_prompt) = parse_prompt_template(&template)?;
@@ -200,7 +199,7 @@ pub async fn generate_code_review(
         return Err(anyhow!("暂不支持审查大型代码变更。"));
     }
     
-    let user_prompt = build_review_user_prompt(&user_prompt, &analysis.context, &analysis.chunks[0]);
+    let user_prompt = build_review_user_prompt(&user_prompt, &analysis.context, &analysis.chunks[0], lint_result);
 
     let review = client.call(&system_prompt, &user_prompt).await?;
     
@@ -258,31 +257,44 @@ fn build_combine_user_prompt(template: &str, context: &ProjectContext, summaries
         .replace("{summaries}", summaries)
 }
 
-fn build_review_user_prompt(template: &str, context: &ProjectContext, chunk: &DiffChunk) -> String {
-    template
+fn build_review_user_prompt(template: &str, context: &ProjectContext, chunk: &DiffChunk, lint_result: Option<&str>) -> String {
+    let base_prompt = template
         .replace("{project_tree}", &context.project_tree)
         .replace("{total_files}", &context.total_files.to_string())
         .replace("{affected_files}", &context.affected_files.join(", "))
-        .replace("{diff_content}", &chunk.content)
+        .replace("{diff_content}", &chunk.content);
+    
+    if let Some(lint) = lint_result {
+        if !lint.trim().is_empty() {
+            let lint_context = format!(
+                "<lint_results>\n{lint}\n</lint_results>"
+            );
+            return base_prompt.replace("<lint_results></lint_results>", &lint_context);
+        }
+    }
+    
+    // 如果没有 lint 结果，就移除占位符
+    base_prompt.replace("<lint_results></lint_results>", "")
 }
 
 fn format_commits_for_report(commits: &BTreeMap<String, Vec<String>>) -> String {
     let mut report = String::new();
     for (author, messages) in commits {
-        report.push_str(&format!("- **{}**\n", author));
+        report.push_str(&format!("- **{author}**\n"));
         for msg in messages {
-            report.push_str(&format!("  - {}\n", msg));
+            report.push_str(&format!("  - {msg}\n"));
         }
+        report.push_str("\n");
     }
     report
 }
 
 fn extract_content(text: &str, tag: &str) -> Option<String> {
-    let start_tag = format!("<{}>", tag);
-    let end_tag = format!("</{}>", tag);
+    let start_tag = format!("<{tag}>");
+    let end_tag = format!("</{tag}>");
     
-    text.find(&start_tag)
-        .and_then(|start| text[start + start_tag.len()..].find(&end_tag).map(|end| {
-            text[start + start_tag.len()..start + start_tag.len() + end].trim().to_string()
-        }))
+    let start = text.find(&start_tag)? + start_tag.len();
+    let end = text.find(&end_tag)?;
+    
+    Some(text[start..end].trim().to_string())
 }

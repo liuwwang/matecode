@@ -9,29 +9,40 @@ pub struct Cli {
     pub command: Commands,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Debug, Subcommand)]
 pub enum Commands {
-    /// 根据暂存的变更生成提交信息
-    #[command(alias = "c")]
+    /// 生成并执行 git commit 命令
     Commit {
-        /// 在提交前暂存所有修改和删除的文件，类似于 `git commit -a`
-        #[arg(short, long)]
+        /// 自动暂存所有已跟踪的文件的更改
+        #[clap(short, long)]
         all: bool,
+
+        /// 在提交前运行 linter
+        #[clap(long)]
+        lint: bool,
     },
-    /// 根据提交历史生成工作报告
-    #[command(alias = "r")]
+    /// 根据提交历史生成工作日报
     Report {
-        /// 报告的开始日期 (例如 "2023-01-01", "7d ago")。默认为今天
+        /// 报告的开始日期 (例如, "yesterday", "2 days ago", "2023-01-01")
         #[arg(long)]
         since: Option<String>,
 
         /// 报告的结束日期 (例如 "2023-01-31")。默认为今天
-        #[arg(long)]
+        #[arg(short, long)]
         until: Option<String>,
     },
-    /// 对暂存的代码变更进行 AI 审查
-    #[command(alias = "rev")]
-    Review,
+    /// 对暂存的更改进行 AI 代码审查
+    Review {
+        /// 在审查前运行 linter
+        #[clap(long)]
+        lint: bool,
+    },
+    /// 对代码库运行 linter
+    Lint {
+        /// 显示 linter 输出的详细信息
+        #[arg(long)]
+        details: bool,
+    },
     /// 初始化 matecode 配置文件
     #[command(alias = "i")]
     Init,
