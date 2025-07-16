@@ -43,19 +43,35 @@ pub async fn get_last_commit_message() -> Result<String> {
     Ok(String::from_utf8(output.stdout)?.trim().to_string())
 }
 
-/// Generates a string representation of the project file tree.
-async fn get_project_tree() -> Result<String> {
-    let mut project_tree = String::new();
+/// 构建忽略规则匹配器，支持项目 .gitignore 和 .matecode-ignore
+async fn build_ignore_matcher() -> Result<ignore::gitignore::Gitignore> {
     let mut builder = ignore::gitignore::GitignoreBuilder::new(".");
 
-    if let Ok(config_dir) = get_config_dir().await {
-        let matecode_ignore = config_dir.join(".matecode-ignore");
-        if matecode_ignore.exists() {
-            builder.add(matecode_ignore);
+    // 1. 添加项目根目录下的 .gitignore 文件
+    let project_gitignore = std::path::Path::new(".gitignore");
+    if project_gitignore.exists() {
+        if let Some(e) = builder.add(project_gitignore) {
+            eprintln!("警告: 无法加载项目 .gitignore 文件 {}: {}", project_gitignore.display(), e);
         }
     }
 
-    let ignore_matcher = builder.build()?;
+    // 2. 添加 matecode 配置目录下的 .matecode-ignore 文件
+    if let Ok(config_dir) = get_config_dir().await {
+        let matecode_ignore = config_dir.join(".matecode-ignore");
+        if matecode_ignore.exists() {
+            if let Some(e) = builder.add(&matecode_ignore) {
+                eprintln!("警告: 无法加载 .matecode-ignore 文件 {}: {}", matecode_ignore.display(), e);
+            }
+        }
+    }
+
+    Ok(builder.build()?)
+}
+
+/// Generates a string representation of the project file tree.
+async fn get_project_tree() -> Result<String> {
+    let mut project_tree = String::new();
+    let ignore_matcher = build_ignore_matcher().await?;
 
     for result in WalkBuilder::new(".").build() {
         if let Ok(entry) = result {
@@ -260,9 +276,12 @@ pub async fn generate_project_tree() -> Result<String> {
     let mut tree = String::new();
     tree.push_str("项目结构：\n");
     
+    // 构建忽略规则匹配器
+    let ignore_matcher = build_ignore_matcher().await?;
+    
     // 获取项目根目录下的文件和目录
     let root_path = std::path::Path::new(".");
-    generate_tree_recursive(root_path, &mut tree, "", 0, 3).await?; // 限制深度为3
+    generate_tree_recursive(root_path, &mut tree, "", 0, 3, &ignore_matcher).await?; // 限制深度为3
     
     Ok(tree)
 }
@@ -274,6 +293,7 @@ async fn generate_tree_recursive(
     prefix: &str,
     depth: u8,
     max_depth: u8,
+    ignore_matcher: &ignore::gitignore::Gitignore,
 ) -> Result<()> {
     if depth >= max_depth {
         return Ok(());
@@ -281,6 +301,14 @@ async fn generate_tree_recursive(
     let mut entries = vec![];
     let mut read_dir = tokio::fs::read_dir(path).await?;
     while let Ok(Some(entry)) = read_dir.next_entry().await {
+        let entry_path = entry.path();
+        let is_dir = entry_path.is_dir();
+        
+        // 检查是否应该忽略此文件/目录
+        if ignore_matcher.matched(&entry_path, is_dir).is_ignore() {
+            continue;
+        }
+        
         entries.push(entry);
     }
 
@@ -307,6 +335,7 @@ async fn generate_tree_recursive(
                 &format!("{}{}", prefix, next_prefix),
                 depth + 1,
                 max_depth,
+                ignore_matcher,
             )
             .await?;
         }

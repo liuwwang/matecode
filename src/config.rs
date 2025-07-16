@@ -147,12 +147,116 @@ pub async fn create_default_config() -> Result<()> {
     // 创建默认提示词模板（只在不存在时创建）
     create_default_prompts(&prompts_dir).await?;
 
+    // 创建默认 .matecode-ignore 文件
+    create_default_ignore_file(&config_dir).await?;
+
     println!("✅ 已创建提示词模板目录: {:?}", prompts_dir);
     println!("\n📝 请编辑配置文件，设置您的 API 密钥:");
     println!("   {}", config_path.display());
     println!("\n💡 提示：私有化部署模型会自动使用 'default' 配置，无需手动添加每个模型。");
     
     Ok(())
+}
+
+async fn create_default_ignore_file(config_dir: &PathBuf) -> Result<()> {
+    let ignore_file_path = config_dir.join(".matecode-ignore");
+    
+    // 只在文件不存在时才创建
+    if !ignore_file_path.exists() {
+        let ignore_content = get_default_ignore_content();
+        fs::write(&ignore_file_path, ignore_content).await?;
+        println!("✅ 已创建默认忽略文件: {:?}", ignore_file_path);
+    } else {
+        println!("⚠️  忽略文件已存在，跳过创建: {:?}", ignore_file_path);
+    }
+    
+    Ok(())
+}
+
+fn get_default_ignore_content() -> &'static str {
+    r#"# matecode 忽略规则
+# 这个文件定义了在生成项目上下文时应该忽略的文件和目录
+# 语法与 .gitignore 相同
+
+# 依赖目录
+node_modules/
+target/
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 构建产物
+build/
+dist/
+*.egg-info/
+.gradle/
+out/
+
+# 日志文件
+*.log
+logs/
+
+# 临时文件
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# IDE 配置
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 系统文件
+.git/
+.svn/
+.hg/
+
+# 大型数据文件
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+
+# 媒体文件
+*.mp4
+*.avi
+*.mkv
+*.mp3
+*.wav
+*.flac
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+*.webp
+*.ico
+
+# 压缩文件
+*.zip
+*.tar
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.rar
+*.7z
+
+# 文档文件（可选，根据需要调整）
+*.pdf
+*.doc
+*.docx
+*.ppt
+*.pptx
+*.xls
+*.xlsx
+"#
 }
 
 pub async fn load_config() -> Result<Config> {

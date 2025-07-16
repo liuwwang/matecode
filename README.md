@@ -30,6 +30,7 @@ matecode init
 - `config.toml` - 主配置文件
 - `prompts/` - 提示词模板目录
 - `history/` - 历史记录目录
+- `.matecode-ignore` - 文件忽略规则
 
 ### 2. 配置 API 密钥
 
@@ -83,6 +84,15 @@ reserved_tokens = 1000    # 预留 tokens
 - `combine.toml` - 合并摘要提示
 
 您可以根据需要编辑这些模板文件来自定义 AI 的行为。
+
+### 5. 文件忽略规则
+
+在生成项目上下文时，`matecode` 会自动忽略一些不必要的文件，支持以下忽略规则：
+
+1. **项目 .gitignore**: 使用项目根目录下的 `.gitignore` 文件
+2. **matecode 特定忽略**: 使用 `~/.config/matecode/.matecode-ignore` 文件
+
+这样可以确保 AI 不会分析临时文件、日志文件、依赖包等不相关的内容，提高分析质量和速度。项目的 `.gitignore` 文件会处理项目特定的忽略规则，而 `.matecode-ignore` 文件可以添加一些通用的忽略模式。
 
 ## 📝 使用方法
 
