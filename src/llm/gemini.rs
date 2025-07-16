@@ -84,10 +84,6 @@ impl GeminiClient {
 
 #[async_trait]
 impl LLMClient for GeminiClient {
-    fn name(&self) -> &str {
-        "Gemini"
-    }
-
     fn model_config(&self) -> &ModelConfig {
         &self.model_config
     }

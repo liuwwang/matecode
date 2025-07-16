@@ -16,7 +16,6 @@ pub mod openai;
 
 #[async_trait]
 pub trait LLMClient: Send + Sync {
-    fn name(&self) -> &str;
     fn model_config(&self) -> &ModelConfig;
     async fn call(&self, system_prompt: &str, user_prompt: &str) -> Result<String>;
 }
@@ -255,66 +254,4 @@ fn extract_content(text: &str, tag: &str) -> Option<String> {
         .and_then(|start| text[start + start_tag.len()..].find(&end_tag).map(|end| {
             text[start + start_tag.len()..start + start_tag.len() + end].trim().to_string()
         }))
-}
-
-/// Splits text into chunks based on a token limit, respecting line breaks.
-fn chunk_text(text: &str, token_limit: usize) -> Vec<String> {
-    let mut chunks = Vec::new();
-    let mut current_chunk = String::new();
-    let mut current_tokens = 0;
-
-    for line in text.lines() {
-        // Simple token estimation: 1 token ~ 4 chars.
-        // A more accurate method would use a real tokenizer like tiktoken.
-        let line_tokens = (line.len() as f64 / 3.0).ceil() as usize;
-
-        if current_tokens + line_tokens > token_limit && !current_chunk.is_empty() {
-            chunks.push(current_chunk.clone());
-            current_chunk.clear();
-            current_tokens = 0;
-        }
-
-        current_chunk.push_str(line);
-        current_chunk.push('\n');
-        current_tokens += line_tokens;
-    }
-
-    if !current_chunk.is_empty() {
-        chunks.push(current_chunk);
-    }
-
-    chunks
-}
-
-/// Processes a large text content by breaking it into chunks,
-/// summarizing each chunk in parallel, and then creating a final summary.
-pub async fn process_large_text(
-    llm_client: &dyn LLMClient,
-    content: &str,
-    prompt_name: &str,
-    combine_prompt_name: &str,
-    max_tokens: usize,
-) -> Result<String> {
-    let chunks = chunk_text(content, max_tokens);
-
-    // If there is only one chunk, process it directly.
-    if chunks.len() <= 1 {
-        return llm_client.call(content, prompt_name).await;
-    }
-
-    // Summarize each chunk in parallel.
-    let chunk_summaries_futures = chunks
-        .iter()
-        .map(|chunk| llm_client.call(chunk, prompt_name));
-
-    let chunk_summaries = join_all(chunk_summaries_futures)
-        .await
-        .into_iter()
-        .collect::<Result<Vec<String>>>()?;
-
-    // Combine the summaries.
-    let combined_summaries = chunk_summaries.join("\n---\n");
-    llm_client
-        .call(&combined_summaries, combine_prompt_name)
-        .await
 }

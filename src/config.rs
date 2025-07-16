@@ -482,35 +482,55 @@ fn get_summarize_prompt_template() -> &'static str {
 fn get_combine_prompt_template() -> &'static str {
     r#"[system]
 你是一个根据代码变更摘要生成 Conventional Commits 规范的 git commit message 的专家。你的回应应该**只能**包含被 <commit_message> 标签包裹的 commit message，不包含任何额外的解释或引言。
-
+ 
 [user]
 请根据以下的项目上下文和代码变更摘要，为我生成一个高质量的、人类可读的中文 git commit message。
-
+ 
+**请注意：**
+*   你的目标是提供一个**高层次的总结**，解释本次系列变更的**核心目的**和**主要实现**，而不是简单地罗列每个文件的具体修改点。
+*   将多个相关的重构或优化操作归纳为一个主要的改动点，并用简洁的语言描述其**整体价值**。
+*   严格遵守 Conventional Commits 规范（例如：`feat:`, `fix:`, `refactor:`, `chore:`, `docs:`, `style:`, `test:`, `perf:`, `build:`, `ci:`, `revert:`）。
+*   commit message 的主体部分应包含对本次变更的**简要描述**，说明为什么要做这些改动以及它们解决了什么问题。
+*   如果可能，使用**动词开头**的简洁表述来概括主要改动。
+ 
 <project_context>
+ 
 {project_tree}
-
+ 
 本次修改影响的文件 ({total_files} 个):
 {affected_files}
+ 
 </project_context>
-
+ 
+ 
 <summaries>
+ 
 {summaries}
+ 
 </summaries>
-
+ 
 <rules>
-1.  **目标**: 不要创建一个简单的变更日志。你的目标是写一个**高层次的总结**，解释这次系列变更的**核心目的**和**主要实现**。
-2.  **格式**: 严格遵守 Conventional Commits 规范。
-3.  **输出**: 只输出被 <commit_message> 标签包裹的 commit message。
+ 
+1.  **核心目的与主要实现**: 提炼本次系列变更的**核心目的**和**主要实现方式**，用一两句话概括。避免逐条列出文件或函数的修改。
+2.  **Conventional Commits 规范**: 严格遵守 Conventional Commits 规范，包括类型（type）、作用域（scope，如果适用）和描述（subject）。
+3.  **主体内容**: commit message 的主体部分应提供更详细的解释，说明本次变更的背景、原因和带来的好处。
+4.  **语言风格**: 使用简洁、清晰、专业且易于理解的中文。
+5.  **输出格式**: 只输出被 <commit_message> 标签包裹的 commit message。
+ 
 </rules>
-
+ 
 <example>
+ 
 <commit_message>
+ 
 feat(history): 引入提交历史归档与日报生成功能
-
+ 
 为了更好地追踪开发进度和自动化生成工作报告，本次引入了提交历史的自动归档机制。
-
+ 
 此功能通过 `post-commit` Git 钩子实现，确保只有最终被采纳的 commit 才会被记录。新增的 `report` 命令可以调用 AI 服务，将每日的提交记录智能地汇总成一份结构化的工作日报。
+ 
 </commit_message>
+ 
 </example>
 "#
 }

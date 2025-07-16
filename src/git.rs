@@ -1,96 +1,12 @@
 //! src/git.rs
-use crate::config::{get_config_dir, ModelConfig};
+
+use crate::config::ModelConfig;
 use anyhow::{anyhow, Context, Result};
-use async_recursion::async_recursion;
-use ignore::WalkBuilder;
-use std::path::Path;
+use std::process::Stdio;
 use tokio::process::Command;
 
-/// Asynchronously runs a git command and returns the output.
-pub async fn run_git_command(args: &[&str]) -> Result<std::process::Output> {
-    let output = Command::new("git").args(args).output().await?;
-    if !output.status.success() {
-        return Err(anyhow!(
-            "Git command failed: {:?}\nStderr: {}",
-            args,
-            String::from_utf8_lossy(&output.stderr)
-        ));
-    }
-    Ok(output)
-}
+// --- Data Structures ---
 
-/// Retrieves the staged git diff.
-pub async fn get_staged_diff() -> Result<String> {
-    let output = run_git_command(&["diff", "--staged"]).await?;
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
-}
-
-/// Gets the project name from the git repository's root directory.
-pub async fn get_project_name() -> Result<String> {
-    let output = run_git_command(&["rev-parse", "--show-toplevel"]).await?;
-    let project_path = Path::new(std::str::from_utf8(&output.stdout)?.trim());
-    let project_name = project_path
-        .file_name()
-        .and_then(|s| s.to_str())
-        .map(|s| s.to_string())
-        .context("Could not get project name from path")?;
-    Ok(project_name)
-}
-
-/// Gets the last commit message from git.
-pub async fn get_last_commit_message() -> Result<String> {
-    let output = run_git_command(&["log", "-1", "--pretty=%B"]).await?;
-    Ok(String::from_utf8(output.stdout)?.trim().to_string())
-}
-
-/// 构建忽略规则匹配器，支持项目 .gitignore 和 .matecode-ignore
-async fn build_ignore_matcher() -> Result<ignore::gitignore::Gitignore> {
-    let mut builder = ignore::gitignore::GitignoreBuilder::new(".");
-
-    // 1. 添加项目根目录下的 .gitignore 文件
-    let project_gitignore = std::path::Path::new(".gitignore");
-    if project_gitignore.exists() {
-        if let Some(e) = builder.add(project_gitignore) {
-            eprintln!("警告: 无法加载项目 .gitignore 文件 {}: {}", project_gitignore.display(), e);
-        }
-    }
-
-    // 2. 添加 matecode 配置目录下的 .matecode-ignore 文件
-    if let Ok(config_dir) = get_config_dir().await {
-        let matecode_ignore = config_dir.join(".matecode-ignore");
-        if matecode_ignore.exists() {
-            if let Some(e) = builder.add(&matecode_ignore) {
-                eprintln!("警告: 无法加载 .matecode-ignore 文件 {}: {}", matecode_ignore.display(), e);
-            }
-        }
-    }
-
-    Ok(builder.build()?)
-}
-
-/// Generates a string representation of the project file tree.
-async fn get_project_tree() -> Result<String> {
-    let mut project_tree = String::new();
-    let ignore_matcher = build_ignore_matcher().await?;
-
-    for result in WalkBuilder::new(".").build() {
-        if let Ok(entry) = result {
-            if entry.path().is_dir() {
-                continue;
-            }
-            if ignore_matcher
-                .matched(entry.path(), entry.file_type().unwrap().is_dir())
-                .is_ignore()
-            {
-                continue;
-            }
-            project_tree.push_str(&format!("- {}\n", entry.path().display()));
-        }
-    }
-    Ok(project_tree)
-}
-
-/// 项目上下文信息
 #[derive(Debug, Clone)]
 pub struct ProjectContext {
     pub project_tree: String,
@@ -98,14 +14,22 @@ pub struct ProjectContext {
     pub affected_files: Vec<String>,
 }
 
-/// Represents a chunk of a git diff.
-#[derive(Debug, Clone)]
-pub struct DiffChunk {
-    pub content: String,
-    pub files: Vec<String>,
+impl ProjectContext {
+    // 移除未使用的 new() 方法
 }
 
-/// Represents the analysis of a git diff.
+#[derive(Debug, Clone)]
+pub struct DiffChunk {
+    pub files: Vec<String>,
+    pub content: String,
+}
+
+impl DiffChunk {
+    pub fn new(files: Vec<String>, content: String) -> Self {
+        Self { files, content }
+    }
+}
+
 #[derive(Debug)]
 pub struct DiffAnalysis {
     pub context: ProjectContext,
@@ -113,234 +37,122 @@ pub struct DiffAnalysis {
     pub needs_chunking: bool,
 }
 
-/*
-fn estimate_token_count(text: &str) -> usize {
-    text.len() / 3
-}
-*/
+// --- Public API ---
 
-pub async fn get_affected_files() -> Result<Vec<String>> {
-    let head_exists = run_git_command(&["rev-parse", "--verify", "HEAD"])
+pub async fn run_git_command(args: &[&str]) -> Result<String> {
+    let output = Command::new("git")
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
         .await
-        .is_ok();
-    let parent_ref = if head_exists {
-        "HEAD"
+        .context("Failed to execute git command")?;
+
+    if output.status.success() {
+        Ok(String::from_utf8(output.stdout).context("Failed to parse git command output")?)
     } else {
-        // A magic number representing an empty tree in git
-        "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
-    };
-
-    let name_only_output = run_git_command(&[
-        "diff-index",
-        "--cached",
-        "--name-only",
-        "--no-renames",
-        parent_ref,
-    ])
-    .await?;
-
-    let files: Vec<String> = String::from_utf8_lossy(&name_only_output.stdout)
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .map(|line| line.to_string())
-        .collect();
-
-    Ok(files)
+        let stderr = String::from_utf8(output.stderr).unwrap_or_else(|_| "Could not read stderr".to_string());
+        Err(anyhow!(
+            "Git command failed with status {}:\n{}",
+            output.status,
+            stderr
+        ))
+    }
 }
 
-fn group_diff_by_file(diff: &str) -> Result<Vec<(String, String)>> {
-    let mut files = Vec::new();
-    let mut current_file_path: Option<String> = None;
-    let mut current_diff = String::new();
-
-    for line in diff.lines() {
-        if line.starts_with("diff --git") {
-            if let Some(path) = current_file_path.take() {
-                if !current_diff.is_empty() {
-                    files.push((path, current_diff.clone()));
-                }
-                current_diff.clear();
-            }
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if let Some(p) = parts.get(3) {
-                current_file_path = Some(p.strip_prefix("b/").unwrap_or(p).to_string());
-            }
-        }
-        current_diff.push_str(line);
-        current_diff.push('\n');
-    }
-
-    if let Some(path) = current_file_path {
-        if !current_diff.is_empty() {
-            files.push((path, current_diff));
-        }
-    }
-
-    Ok(files)
+pub async fn get_staged_diff() -> Result<String> {
+    run_git_command(&["diff", "--staged"]).await
 }
 
-#[async_recursion]
-async fn split_diff_by_size(diff: &str, max_chunk_size: usize) -> Result<Vec<DiffChunk>> {
-    let mut chunks = Vec::new();
-    let mut current_chunk = String::new();
-    let mut current_files: Vec<String> = Vec::new();
-    let mut chunk_size = 0;
+pub async fn get_project_name() -> Result<String> {
+    let output = run_git_command(&["rev-parse", "--show-toplevel"]).await?;
+    let path = std::path::Path::new(output.trim());
+    Ok(path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("unknown_project")
+        .to_string())
+}
 
-    let all_files = get_affected_files().await?;
+pub async fn get_last_commit_message() -> Result<String> {
+    run_git_command(&["log", "-1", "--pretty=%B"]).await
+}
 
-    for (file_path, file_diff) in group_diff_by_file(diff)? {
-        let file_size = file_diff.len();
-        if chunk_size + file_size > max_chunk_size && !current_chunk.is_empty() {
-            chunks.push(DiffChunk {
-                content: current_chunk.clone(),
-                files: current_files.clone(),
-            });
-            current_chunk.clear();
-            current_files.clear();
-            chunk_size = 0;
-        }
-        current_chunk.push_str(&file_diff);
-        current_files.push(file_path);
-        chunk_size += file_size;
-    }
+pub async fn analyze_diff(diff: &str, model_config: &ModelConfig) -> Result<DiffAnalysis> {
+    let project_context = get_project_context().await?;
+    let max_tokens = model_config.max_tokens - model_config.reserved_tokens;
 
-    if !current_chunk.is_empty() {
-        chunks.push(DiffChunk {
-            content: current_chunk,
-            files: current_files,
+    // 首先估算整个 diff 的 token 数
+    let total_tokens = estimate_token_count(diff);
+    
+    // 如果整个 diff 在 token 限制内，直接返回单个块
+    if total_tokens <= max_tokens {
+        return Ok(DiffAnalysis {
+            context: project_context.clone(),
+            chunks: vec![DiffChunk::new(project_context.affected_files.clone(), diff.to_string())],
+            needs_chunking: false,
         });
     }
 
-    if chunks.is_empty() {
-        chunks.push(DiffChunk {
-            content: diff.to_string(),
-            files: all_files,
-        });
-    }
-
-    Ok(chunks)
-}
-
-pub async fn analyze_diff(diff: &str, config: &ModelConfig) -> Result<DiffAnalysis> {
-    let project_tree = get_project_tree()
-        .await
-        .unwrap_or_else(|_| "Could not read project tree.".to_string());
-
-    let affected_files = get_affected_files().await?;
-
-    let context = ProjectContext {
-        project_tree: project_tree.clone(),
-        total_files: affected_files.len(),
-        affected_files: affected_files.clone(),
-    };
-
-    let context_size = project_tree.len() + affected_files.join(", ").len();
-    let available_tokens = config.max_tokens.saturating_sub(context_size / 3);
-    let max_chunk_chars = available_tokens * 3;
-
-    let needs_chunking = diff.len() > max_chunk_chars;
-
-    let chunks = if needs_chunking {
-        split_diff_by_size(diff, max_chunk_chars).await?
-    } else {
-        vec![DiffChunk {
-            content: diff.to_string(),
-            files: affected_files,
-        }]
-    };
+    // 如果超过限制，需要分块
+    let chunks = chunk_large_text(diff, max_tokens);
+    let diff_chunks = chunks.into_iter().map(|chunk_content| {
+        DiffChunk::new(project_context.affected_files.clone(), chunk_content)
+    }).collect();
 
     Ok(DiffAnalysis {
-        context,
-        chunks,
-        needs_chunking,
+        context: project_context,
+        chunks: diff_chunks,
+        needs_chunking: true,
     })
 }
 
-/*
-fn extract_file_path_from_diff_line(line: &str) -> Option<String> {
-    // 解析 "diff --git a/path/to/file b/path/to/file" 格式
-    if let Some(start) = line.find("b/") {
-        let path_part = &line[start + 2..];
-        if let Some(end) = path_part.find(' ') {
-            Some(path_part[..end].to_string())
-        } else {
-            Some(path_part.to_string())
-        }
-    } else {
-        None
-    }
-}
-*/
+// --- Helper Functions ---
 
+async fn get_project_context() -> Result<ProjectContext> {
+    let affected_files_str = run_git_command(&["diff", "--staged", "--name-only"]).await?;
+    let affected_files = affected_files_str.lines().map(String::from).collect();
 
-/// 生成项目目录树
-pub async fn generate_project_tree() -> Result<String> {
-    let mut tree = String::new();
-    tree.push_str("项目结构：\n");
-    
-    // 构建忽略规则匹配器
-    let ignore_matcher = build_ignore_matcher().await?;
-    
-    // 获取项目根目录下的文件和目录
-    let root_path = std::path::Path::new(".");
-    generate_tree_recursive(root_path, &mut tree, "", 0, 3, &ignore_matcher).await?; // 限制深度为3
-    
-    Ok(tree)
+    // For simplicity, we're not generating the full file tree for now to keep it fast.
+    // This could be an enhancement for later.
+    let project_tree = "File tree generation is disabled for performance.".to_string();
+    let total_files = 0; // Not currently implemented.
+
+    Ok(ProjectContext {
+        project_tree,
+        total_files,
+        affected_files,
+    })
 }
 
-#[async_recursion]
-async fn generate_tree_recursive(
-    path: &Path,
-    tree: &mut String,
-    prefix: &str,
-    depth: u8,
-    max_depth: u8,
-    ignore_matcher: &ignore::gitignore::Gitignore,
-) -> Result<()> {
-    if depth >= max_depth {
-        return Ok(());
-    }
-    let mut entries = vec![];
-    let mut read_dir = tokio::fs::read_dir(path).await?;
-    while let Ok(Some(entry)) = read_dir.next_entry().await {
-        let entry_path = entry.path();
-        let is_dir = entry_path.is_dir();
-        
-        // 检查是否应该忽略此文件/目录
-        if ignore_matcher.matched(&entry_path, is_dir).is_ignore() {
-            continue;
+fn estimate_token_count(text: &str) -> usize {
+    // A simple heuristic: 1 token is roughly 3-4 characters.
+    // Using a ratio of 3 for a more conservative (safer) estimate.
+    (text.len() as f64 / 3.0).ceil() as usize
+}
+
+fn chunk_large_text(text: &str, token_limit: usize) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut current_chunk = String::new();
+    let mut current_tokens = 0;
+
+    for line in text.lines() {
+        let line_tokens = estimate_token_count(line);
+
+        if current_tokens + line_tokens > token_limit && !current_chunk.is_empty() {
+            chunks.push(current_chunk.clone());
+            current_chunk.clear();
+            current_tokens = 0;
         }
-        
-        entries.push(entry);
+
+        current_chunk.push_str(line);
+        current_chunk.push('\n');
+        current_tokens += line_tokens;
     }
 
-    entries.sort_by_key(|a| a.path());
-    let mut it = entries.iter().peekable();
-    while let Some(entry) = it.next() {
-        let path = entry.path();
-        let next_prefix = if it.peek().is_some() {
-            "│   "
-        } else {
-            "    "
-        };
-        let connector = if it.peek().is_some() { "├──" } else { "└──" };
-        tree.push_str(&format!(
-            "{}{} {}\n",
-            prefix,
-            connector,
-            path.file_name().unwrap().to_str().unwrap()
-        ));
-        if path.is_dir() {
-            generate_tree_recursive(
-                &path,
-                tree,
-                &format!("{}{}", prefix, next_prefix),
-                depth + 1,
-                max_depth,
-                ignore_matcher,
-            )
-            .await?;
-        }
+    if !current_chunk.is_empty() {
+        chunks.push(current_chunk);
     }
-    Ok(())
+
+    chunks
 }

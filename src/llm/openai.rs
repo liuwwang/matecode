@@ -82,10 +82,6 @@ impl OpenAIClient {
 
 #[async_trait]
 impl LLMClient for OpenAIClient {
-    fn name(&self) -> &str {
-        "OpenAI"
-    }
-
     fn model_config(&self) -> &ModelConfig {
         &self.model_config
     }
