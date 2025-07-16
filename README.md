@@ -1,7 +1,7 @@
 # matecode
 
-[![Rust CI](https://github.com/your-username/matecode/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/matecode/actions/workflows/ci.yml)
-[![Latest Release](https://img.shields.io/github/v/release/your-username/matecode)](https://github.com/your-username/matecode/releases/latest)
+[![Rust CI](https://github.com/liuwwang/matecode/actions/workflows/ci.yml/badge.svg)](https://github.com/liuwwang/matecode/actions/workflows/ci.yml)
+[![Latest Release](https://img.shields.io/github/v/release/liuwwang/matecode)](https://github.com/liuwwang/matecode/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 一个基于 AI 的 CLI 工具，旨在自动化 Git 提交信息和工作日报的生成，并提供代码审查功能。
@@ -21,9 +21,9 @@ An AI-powered CLI tool to automate the generation of Git commit messages, work r
 
 ## 📦 安装 / Installation
 
-您可以从 [GitHub Releases](https://github.com/your-username/matecode/releases) 页面下载最新的预编译二进制文件。
+您可以从 [GitHub Releases](https://github.com/liuwwang/matecode/releases) 页面下载最新的预编译二进制文件。
 
-1.  前往 [Releases 页面](https://github.com/your-username/matecode/releases/latest)。
+1.  前往 [Releases 页面](https://github.com/liuwwang/matecode/releases/latest)。
 2.  根据您的操作系统，下载对应的压缩包（例如 `matecode-v0.1.0-x86_64-unknown-linux-gnu.tar.gz`）。
 3.  解压文件，得到可执行文件 `matecode` (或 `matecode.exe`)。
 4.  将该文件移动到您的系统路径下，例如 `/usr/local/bin` (Linux/macOS) 或 `C:\Windows\System32` (Windows)，以便在任何地方都能调用它。
@@ -51,11 +51,13 @@ matecode commit
 # 别名: matecode c
 ```
 
-如果您想让工具自动暂存所有已修改和已删除的文件（等同于 `git commit -a`），可以使用 `-a` 或 `--all` 参数：
+如果您想让工具自动暂存文件的变更，可以使用 `-a` 或 `--all` 参数。这个参数的行为类似于 `git add -u`：
 
 ```bash
 matecode commit --all
 ```
+
+**重要提示**: `-a` 参数只会暂存**已被 Git 跟踪**的文件的**修改**和**删除**。它**不会**暂存您新建的、尚未被跟踪的文件（untracked files）。
 
 ### 3. 生成工作日报
 
@@ -112,7 +114,7 @@ matecode install-hook
 1.  确保您已安装 [Rust](https://www.rust-lang.org/tools/install)。
 2.  克隆本仓库：
     ```bash
-    git clone https://github.com/your-username/matecode.git
+    git clone https://github.com/liuwwang/matecode.git
     cd matecode
     ```
 3.  编译项目：
