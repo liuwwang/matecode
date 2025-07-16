@@ -1,167 +1,126 @@
-# matecode 🤖
+# matecode
 
-`matecode` 是一个 AI 驱动的 CLI 工具，旨在自动化和增强您的 Git 工作流程。它可以为您生成富有表现力的提交信息、撰写工作日报，甚至审查您的代码。
+[![Rust CI](https://github.com/your-username/matecode/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/matecode/actions/workflows/ci.yml)
+[![Latest Release](https://img.shields.io/github/v/release/your-username/matecode)](https://github.com/your-username/matecode/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## ✨ 功能
+一个基于 AI 的 CLI 工具，旨在自动化 Git 提交信息和工作日报的生成，并提供代码审查功能。
 
-- **AI 生成提交信息**: 根据您的暂存更改 (git diff) 自动生成清晰、规范的 `git commit` 信息。
-- **AI 生成工作日报**: 根据指定日期范围内的提交历史，自动汇总和生成工作日报。
-- **AI 代码审查**: 对您的暂存代码进行智能审查，提供改进建议。
-- **交互式操作**: 在提交前，您可以选择直接提交、编辑、重新生成或放弃 AI 生成的信息。
-- **Git 钩子集成**: 通过 `post-commit` 钩子自动归档提交信息，为日报生成积累素材。
-- **多模型支持**: 支持多种大语言模型，如 OpenAI 的 GPT 系列和 Google 的 Gemini。
-- **可自定义提示词**: 提示词模板存储在配置目录中，用户可以根据需要自定义。
+An AI-powered CLI tool to automate the generation of Git commit messages, work reports, and provide code reviews.
 
-## 🚀 安装
+---
 
-*(安装说明待补充)*
+## 🚀 功能 / Features
 
-## 🛠️ 配置
+-   **智能 Commit 信息生成**: 根据 `git diff` 的内容，自动生成符合规范的提交信息。
+-   **自动化工作日报**: 根据指定时间范围内的 Git 提交历史，一键生成工作日报。
+-   **AI 代码审查**: 对暂存区的代码改动进行智能审查，提出改进建议。
+-   **多平台支持**: 支持 Windows, macOS, 和 Linux。
+-   **高度可配置**: 支持 OpenAI、Gemini 等多种 LLM 服务商，并允许自定义 Prompt 模板。
+-   **Git Hooks 集成**: 可作为 Git 的 `prepare-commit-msg` 钩子使用，无缝集成到您的工作流中。
+
+## 📦 安装 / Installation
+
+您可以从 [GitHub Releases](https://github.com/your-username/matecode/releases) 页面下载最新的预编译二进制文件。
+
+1.  前往 [Releases 页面](https://github.com/your-username/matecode/releases/latest)。
+2.  根据您的操作系统，下载对应的压缩包（例如 `matecode-v0.1.0-x86_64-unknown-linux-gnu.tar.gz`）。
+3.  解压文件，得到可执行文件 `matecode` (或 `matecode.exe`)。
+4.  将该文件移动到您的系统路径下，例如 `/usr/local/bin` (Linux/macOS) 或 `C:\Windows\System32` (Windows)，以便在任何地方都能调用它。
+
+## 🛠️ 使用方法 / Usage
 
 ### 1. 初始化配置
 
-运行以下命令来初始化配置，它会创建完整的配置目录结构：
+在第一次使用前，运行初始化命令来生成默认的配置文件：
 
 ```bash
 matecode init
 ```
 
-这将在 `~/.config/matecode/` 目录下创建：
-- `config.toml` - 主配置文件
-- `prompts/` - 提示词模板目录
-- `history/` - 历史记录目录
-- `.matecode-ignore` - 文件忽略规则
+该命令会在您的用户配置目录下创建 `matecode` 文件夹（例如 `~/.config/matecode`），并生成 `config.toml` 和 `prompts` 模板。
 
-### 2. 配置 API 密钥
+**重要提示**: 您需要根据提示，编辑 `config.toml` 文件并填入您的 LLM API Key。
 
-编辑 `~/.config/matecode/config.toml` 文件，设置您的 API 密钥：
+### 2. 生成 Commit 信息
 
-```toml
-# 选择默认的 LLM 提供商：'openai' 或 'gemini'
-provider = "openai"
-
-# 界面语言
-language = "zh-CN"
-
-[llm.openai]
-api_key = "sk-your-api-key-here"
-api_base = "http://10.63.8.6:8082/v1"  # 您的私有化部署地址
-default_model = "qwen2.5-72b-instruct-001"
-proxy = "socks5h://127.0.0.1:1080"     # 可选，代理设置
-
-[llm.gemini]
-api_key = "your-gemini-api-key-here"
-default_model = "gemini-2.0-flash-exp"
-proxy = "socks5h://127.0.0.1:1080"     # 可选，代理设置
-```
-
-### 3. 模型配置说明
-
-**私有化部署模型**：
-- 所有私有化部署的模型（如 Qwen、ChatGLM 等）会自动使用 `default` 配置
-- 无需为每个模型单独配置参数
-- 如果需要调整，可以在配置文件中添加：
-
-```toml
-[llm.openai.models.default]
-max_tokens = 32768        # 上下文窗口大小
-max_output_tokens = 4096  # 最大输出长度
-reserved_tokens = 1000    # 预留 tokens
-```
-
-**Gemini 2.5 Flash**：
-- 已预配置 Gemini 2.0 Flash Experimental 的参数
-- 支持超大上下文窗口（1M tokens）
-
-### 4. 自定义提示词（可选）
-
-提示词模板存储在 `~/.config/matecode/prompts/` 目录中：
-
-- `commit.toml` - 提交信息生成提示
-- `review.toml` - 代码审查提示
-- `report.toml` - 工作日报生成提示
-- `summarize.toml` - 代码摘要提示
-- `combine.toml` - 合并摘要提示
-
-您可以根据需要编辑这些模板文件来自定义 AI 的行为。
-
-### 5. 文件忽略规则
-
-在生成项目上下文时，`matecode` 会自动忽略一些不必要的文件，支持以下忽略规则：
-
-1. **项目 .gitignore**: 使用项目根目录下的 `.gitignore` 文件
-2. **matecode 特定忽略**: 使用 `~/.config/matecode/.matecode-ignore` 文件
-
-这样可以确保 AI 不会分析临时文件、日志文件、依赖包等不相关的内容，提高分析质量和速度。项目的 `.gitignore` 文件会处理项目特定的忽略规则，而 `.matecode-ignore` 文件可以添加一些通用的忽略模式。
-
-## 📝 使用方法
-
-### 生成 Commit Message
+当您完成代码修改并使用 `git add` 将其暂存后，运行：
 
 ```bash
-# 对已暂存的文件生成 commit message
 matecode commit
+# 别名: matecode c
+```
 
-# 暂存所有已跟踪的文件并生成 commit message
+如果您想让工具自动暂存所有已修改和已删除的文件（等同于 `git commit -a`），可以使用 `-a` 或 `--all` 参数：
+
+```bash
 matecode commit --all
 ```
 
-### 生成工作日报
+### 3. 生成工作日报
+
+根据您的提交历史生成工作报告：
 
 ```bash
-# 生成今天的工作日报
 matecode report
-
-# 生成指定日期的工作日报
-matecode report --since "yesterday"
-
-# 生成指定日期范围内的工作日报
-matecode report --since "2024-05-01" --until "2024-05-10"
+# 别名: matecode r
 ```
 
-### 代码审查
+默认情况下，它会生成当天的工作报告。您也可以指定时间范围：
 
 ```bash
-# 对已暂存的文件进行代码审查
+# 生成过去7天的工作报告
+matecode report --since "7d ago"
+
+# 生成从2023年10月1日到10月31日的工作报告
+matecode report --since "2023-10-01" --until "2023-10-31"
+```
+
+### 4. AI 代码审查
+
+对您暂存区的代码进行一次快速的 AI 审查：
+
+```bash
 matecode review
+# 别名: matecode rev
 ```
 
-### Git 钩子
+### 5. 安装 Git Hook
 
-为了让 `matecode report` 能够获取到所有团队成员的提交，即使他们不使用 `matecode commit`，您可以在项目的 Git 仓库中安装一个钩子。
+为了获得最佳体验，您可以将 `matecode` 安装为 Git 钩子。这样，在您每次运行 `git commit` 时，它都会自动为您生成提交信息。
 
 ```bash
-# 在当前仓库安装 post-commit 钩子
 matecode install-hook
 ```
 
-这个钩子会把每次提交的元信息（作者、项目名、消息）记录到 `~/.config/matecode/history/` 目录中。
+## ⚙️ 配置 / Configuration
 
-## 🔧 配置说明
+所有的配置都在 `config.toml` 文件中。
 
-### 模型配置
+-   **`provider`**: 设置默认的 LLM 服务商，可选值为 `"openai"` 或 `"gemini"`。
+-   **`language`**: 设置生成内容的语言，例如 `"zh-CN"` 或 `"en-US"`。
+-   **`llm.openai` / `llm.gemini`**:
+    -   `api_key`: **必需**，您的 API 密钥。
+    -   `api_base`: 如果您使用自托管的服务或代理，请设置此项。
+    -   `default_model`: 指定该服务商下使用的默认模型。
+-   **`prompts` 目录**: 您可以修改 `prompts` 目录下的 `.toml` 文件来完全自定义生成内容时使用的提示词模板。
 
-每个模型都有以下配置选项：
+## 🧑‍💻 从源码构建 / Building From Source
 
-- `max_tokens`: 模型的最大上下文长度
-- `max_output_tokens`: 模型的最大输出长度
-- `reserved_tokens`: 为系统提示和其他开销预留的 token 数量
+如果您想自行编译项目：
 
-### 代理设置
+1.  确保您已安装 [Rust](https://www.rust-lang.org/tools/install)。
+2.  克隆本仓库：
+    ```bash
+    git clone https://github.com/your-username/matecode.git
+    cd matecode
+    ```
+3.  编译项目：
+    ```bash
+    cargo build --release
+    ```
+4.  编译好的二进制文件将位于 `./target/release/matecode`。
 
-如果您需要通过代理访问 API，可以在配置文件中设置：
+## 📜 许可证 / License
 
-```toml
-[llm.openai]
-proxy = "socks5h://127.0.0.1:1080"  # SOCKS5 代理
-# 或者
-proxy = "http://127.0.0.1:8889"     # HTTP 代理
-```
-
-## 🤝 贡献
-
-欢迎提交 PRs 和 issues！
-
-## 📄 许可证
-
-本项目使用 [MIT](LICENSE) 许可证。
+本项目采用 [MIT](https://opensource.org/licenses/MIT) 许可证。
