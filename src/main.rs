@@ -6,7 +6,6 @@ use colored::Colorize;
 use dialoguer::{theme::ColorfulTheme, Confirm, Select};
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::io::ErrorKind;
 
 mod cli;
 mod config;
@@ -39,7 +38,7 @@ async fn run_linter(show_details: bool) -> Result<Option<String>> {
         println!("🔍 检测到项目语言: {}", lang.cyan());
     }
 
-    let Some(mut linter_cmd) = toolchain::get_linter_command(&lang, &config).await? else {
+    let Some(linter_cmd) = toolchain::get_linter_command(&lang, &config).await? else {
         println!("🤷‍ 未在配置中找到语言 '{}' 对应的 linter 命令。", lang.yellow());
         println!("   您可以在 `config.toml` 的 `[lint]` 部分为它添加一个，例如：");
         println!("   {} = \"<your-linter-command>\"", lang);
@@ -298,15 +297,6 @@ async fn main() -> Result<()> {
             println!("{report}");
         }
         Commands::Review { lint } => {
-            let lint_result = if lint {
-                println!("{}", "(--lint) 审查前运行 linter...".bold());
-                let result = run_linter(false).await?;
-                println!("{}", "-".repeat(60));
-                result
-            } else {
-                None
-            };
-
             let diff = get_staged_diff()
                 .await
                 .context("无法获取用于审查的暂存 git diff。")?;
@@ -315,6 +305,15 @@ async fn main() -> Result<()> {
                 println!("{}", "没有需要审查的暂存更改。".yellow());
                 return Ok(());
             }
+
+            let lint_result = if lint {
+                println!("{}", "(--lint) 审查前运行 linter...".bold());
+                let result = run_linter(false).await?;
+                println!("{}", "-".repeat(60));
+                result
+            } else {
+                None
+            };
 
             let llm_client = config::get_llm_client().await?;
             let review = llm::generate_code_review(llm_client.as_client(), &diff, lint_result.as_deref()).await?;
