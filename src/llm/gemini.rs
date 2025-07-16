@@ -2,12 +2,16 @@
 use super::LLMClient;
 use crate::config::{ModelConfig, GeminiProvider};
 use anyhow::{anyhow, Result};
+use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+
+// --- Data Structures (for Gemini API) ---
 
 #[derive(Serialize)]
 struct GeminiRequest<'a> {
     contents: Vec<Content<'a>>,
+    // We can add generationConfig here if needed
 }
 
 #[derive(Serialize)]
@@ -54,18 +58,16 @@ impl GeminiClient {
         let api_key = config.api_key.clone();
         let model_name = config.default_model.clone();
 
-        // 获取模型配置，如果找不到具体模型配置，使用 default 配置
         let model_config = config.models.get(&model_name)
             .or_else(|| config.models.get("default"))
-            .ok_or_else(|| anyhow!("未找到模型 {} 的配置，也没有找到默认配置", model_name))?
+            .ok_or_else(|| anyhow!("Configuration for model '{}' not found, and no default configuration available.", model_name))?
             .clone();
 
-        // 构建 HTTP 客户端
         let mut client_builder = Client::builder().user_agent(FAKE_USER_AGENT);
         
-        // 如果配置了代理，使用代理
         if let Some(proxy_url) = &config.proxy {
-            let proxy = reqwest::Proxy::all(proxy_url)?;
+            let proxy = reqwest::Proxy::all(proxy_url)
+                .map_err(|e| anyhow!("Failed to create proxy: {}", e))?;
             client_builder = client_builder.proxy(proxy);
         }
         
@@ -80,7 +82,7 @@ impl GeminiClient {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait]
 impl LLMClient for GeminiClient {
     fn name(&self) -> &str {
         "Gemini"
@@ -91,6 +93,13 @@ impl LLMClient for GeminiClient {
     }
 
     async fn call(&self, _system_prompt: &str, user_prompt: &str) -> Result<String> {
+        // Gemini API does not have a separate system prompt, so we prepend it to the user prompt.
+        let full_prompt = if !_system_prompt.is_empty() {
+            format!("{}\n\n{}", _system_prompt, user_prompt)
+        } else {
+            user_prompt.to_string()
+        };
+
         let api_url = format!(
             "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
             self.model_name, self.api_key
@@ -98,7 +107,7 @@ impl LLMClient for GeminiClient {
 
         let request_payload = GeminiRequest {
             contents: vec![Content {
-                parts: vec![Part { text: user_prompt }],
+                parts: vec![Part { text: &full_prompt }],
             }],
         };
 
@@ -107,30 +116,28 @@ impl LLMClient for GeminiClient {
             .post(&api_url)
             .json(&request_payload)
             .send()
-            .await?;
+            .await
+            .map_err(|e| anyhow!("Failed to send request to Gemini API: {}", e))?;
 
         let res_status = res.status();
 
         if res_status.is_success() {
-            let response_result = res.json::<GeminiResponse>().await;
-            match response_result {
-                Ok(response) => {
-                    let text = response
-                        .candidates
-                        .first()
-                        .and_then(|c| c.content.as_ref())
-                        .and_then(|content| content.parts.first())
-                        .and_then(|part| part.text.as_ref())
-                        .map(String::from)
-                        .unwrap_or_default();
-                    Ok(text)
-                }
-                Err(e) => Err(anyhow!("无法从 Gemini API 响应中提取文本: {}", e)),
-            }
+            let response = res.json::<GeminiResponse>().await
+                .map_err(|e| anyhow!("Failed to parse JSON response from Gemini API: {}", e))?;
+            
+            response
+                .candidates
+                .first()
+                .and_then(|c| c.content.as_ref())
+                .and_then(|content| content.parts.first())
+                .and_then(|part| part.text.as_ref())
+                .map(|s| s.trim().to_string())
+                .ok_or_else(|| anyhow!("Could not extract text from Gemini API response."))
         } else {
-            let error_body = res.text().await?;
+            let error_body = res.text().await
+                .unwrap_or_else(|_| "Could not retrieve error body".to_string());
             Err(anyhow!(
-                "调用 Gemini API 失败: {} {}\n响应体: {}",
+                "Gemini API call failed: {} {}\nResponse body: {}",
                 res_status,
                 res_status.canonical_reason().unwrap_or(""),
                 error_body

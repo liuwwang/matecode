@@ -40,7 +40,7 @@ async fn main() -> Result<()> {
 
                 let llm_client = config::get_llm_client().await?;
                 let mut commit_message =
-                    generate_commit_message(&llm_client, &diff).await?;
+                    generate_commit_message(llm_client.as_client(), &diff).await?;
                 commit_message = commit_message.replace('`', "'");
 
                 println!("\n{}\n", "=".repeat(60));
@@ -136,7 +136,7 @@ async fn main() -> Result<()> {
 
             let llm_client = config::get_llm_client().await?;
             let report = llm::generate_report_from_commits(
-                &llm_client,
+                llm_client.as_client(),
                 &all_commits,
                 start_date,
                 end_date,
@@ -157,7 +157,7 @@ async fn main() -> Result<()> {
             println!("🤖 正在审查您的代码，请稍候...");
 
             let llm_client = config::get_llm_client().await?;
-            let review = llm::generate_code_review(&llm_client, &diff).await?;
+            let review = llm::generate_code_review(llm_client.as_client(), &diff).await?;
 
             println!("\n{}\n", "=".repeat(60));
             println!("📝 AI 代码审查报告:");

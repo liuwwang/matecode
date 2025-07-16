@@ -6,6 +6,7 @@ use anyhow::{anyhow, Result};
 use async_recursion::async_recursion;
 use async_trait::async_trait;
 use chrono::NaiveDate;
+use futures::future::join_all;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::collections::BTreeMap;
 use std::time::Duration;
@@ -21,30 +22,15 @@ pub trait LLMClient: Send + Sync {
 }
 
 pub enum LLM {
-    OpenAI(openai::OpenClient),
+    OpenAI(openai::OpenAIClient),
     Gemini(gemini::GeminiClient),
 }
 
-#[async_trait]
-impl LLMClient for LLM {
-    fn name(&self) -> &str {
+impl LLM {
+    pub fn as_client(&self) -> &dyn LLMClient {
         match self {
-            LLM::OpenAI(client) => client.name(),
-            LLM::Gemini(client) => client.name(),
-        }
-    }
-
-    fn model_config(&self) -> &ModelConfig {
-        match self {
-            LLM::OpenAI(client) => client.model_config(),
-            LLM::Gemini(client) => client.model_config(),
-        }
-    }
-
-    async fn call(&self, system_prompt: &str, user_prompt: &str) -> Result<String> {
-        match self {
-            LLM::OpenAI(client) => client.call(system_prompt, user_prompt).await,
-            LLM::Gemini(client) => client.call(system_prompt, user_prompt).await,
+            LLM::OpenAI(client) => client,
+            LLM::Gemini(client) => client,
         }
     }
 }
@@ -54,7 +40,7 @@ pub fn create_llm_client(config: &Config) -> Result<LLM> {
         "openai" => {
             let openai_config = config.llm.openai.as_ref()
                 .ok_or_else(|| anyhow!("OpenAI 配置未找到"))?;
-            Ok(LLM::OpenAI(openai::OpenClient::new(openai_config)?))
+            Ok(LLM::OpenAI(openai::OpenAIClient::new(openai_config)?))
         }
         "gemini" => {
             let gemini_config = config.llm.gemini.as_ref()
@@ -94,22 +80,29 @@ async fn generate_chunked_commit_message(
     client: &dyn LLMClient,
     analysis: &DiffAnalysis,
 ) -> Result<String> {
-    let mut summaries = Vec::new();
-
     let progress_bar = ProgressBar::new(analysis.chunks.len() as u64);
-    for (i, chunk) in analysis.chunks.iter().enumerate() {
-        progress_bar.set_message(format!("Processing chunk {}/{}...", i + 1, analysis.chunks.len()));
-        let summary = summarize_chunk(client, &analysis.context, chunk).await?;
-        summaries.push(summary);
-        progress_bar.inc(1);
-    }
+    progress_bar.set_style(ProgressStyle::default_bar()
+        .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta}) {msg}")
+        .unwrap()
+        .progress_chars("#>-"));
+
+    let summary_futures = analysis.chunks.iter().map(|chunk| {
+        let pb_clone = progress_bar.clone();
+        async move {
+            let summary = summarize_chunk(client, &analysis.context, chunk).await;
+            pb_clone.inc(1);
+            summary
+        }
+    });
+
+    let summaries = join_all(summary_futures)
+        .await
+        .into_iter()
+        .collect::<Result<Vec<String>>>()?;
+    
     progress_bar.finish_with_message("✓ All chunks summarized.");
 
-    let final_commit_message =
-        combine_summaries(client, &analysis.context, &summaries.join("\n\n"))
-            .await?;
-
-    Ok(final_commit_message)
+    combine_summaries(client, &analysis.context, &summaries.join("\n\n")).await
 }
 
 async fn generate_single_chunk_commit_message(
@@ -174,40 +167,38 @@ pub async fn generate_code_review(
     let (system_prompt, user_prompt) = parse_prompt_template(&template)?;
     
     let analysis = crate::git::analyze_diff(diff, client.model_config()).await?;
+    
+    // For now, code review only supports single chunks.
+    // We can extend this later to support chunking like commit messages.
+    if analysis.needs_chunking {
+        return Err(anyhow!("Code review for large changes is not yet supported."));
+    }
+    
     let user_prompt = build_review_user_prompt(&user_prompt, &analysis.context, &analysis.chunks[0]);
 
     client.call(&system_prompt, &user_prompt).await
 }
 
+
+// --- Helper Functions ---
+
 fn parse_prompt_template(template: &str) -> Result<(String, String)> {
-    let lines: Vec<&str> = template.lines().collect();
     let mut system_prompt = String::new();
     let mut user_prompt = String::new();
     let mut current_section = "";
     
-    for line in lines {
-        if line.trim() == "[system]" {
+    for line in template.lines() {
+        let trimmed_line = line.trim();
+        if trimmed_line == "[system]" {
             current_section = "system";
-            continue;
-        } else if line.trim() == "[user]" {
+        } else if trimmed_line == "[user]" {
             current_section = "user";
-            continue;
-        }
-        
-        match current_section {
-            "system" => {
-                if !system_prompt.is_empty() {
-                    system_prompt.push('\n');
-                }
-                system_prompt.push_str(line);
+        } else if !trimmed_line.is_empty() {
+            match current_section {
+                "system" => system_prompt.push_str(line),
+                "user" => user_prompt.push_str(line),
+                _ => {}
             }
-            "user" => {
-                if !user_prompt.is_empty() {
-                    user_prompt.push('\n');
-                }
-                user_prompt.push_str(line);
-            }
-            _ => {}
         }
     }
     
@@ -246,30 +237,84 @@ fn build_review_user_prompt(template: &str, context: &ProjectContext, chunk: &Di
 }
 
 fn format_commits_for_report(commits: &BTreeMap<String, Vec<String>>) -> String {
-    let mut result = String::new();
-    
-    for (project, commit_list) in commits {
-        result.push_str(&format!("## 项目: {}\n\n", project));
-        for (i, commit) in commit_list.iter().enumerate() {
-            result.push_str(&format!("### 提交 {}\n{}\n\n", i + 1, commit));
+    let mut report = String::new();
+    for (author, messages) in commits {
+        report.push_str(&format!("- **{}**\n", author));
+        for msg in messages {
+            report.push_str(&format!("  - {}\n", msg));
         }
     }
-    
-    result
+    report
 }
 
 fn extract_content(text: &str, tag: &str) -> Option<String> {
     let start_tag = format!("<{}>", tag);
     let end_tag = format!("</{}>", tag);
     
-    if let Some(start) = text.find(&start_tag) {
-        if let Some(end) = text.find(&end_tag) {
-            let content_start = start + start_tag.len();
-            if content_start < end {
-                return Some(text[content_start..end].trim().to_string());
-            }
+    text.find(&start_tag)
+        .and_then(|start| text[start + start_tag.len()..].find(&end_tag).map(|end| {
+            text[start + start_tag.len()..start + start_tag.len() + end].trim().to_string()
+        }))
+}
+
+/// Splits text into chunks based on a token limit, respecting line breaks.
+fn chunk_text(text: &str, token_limit: usize) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut current_chunk = String::new();
+    let mut current_tokens = 0;
+
+    for line in text.lines() {
+        // Simple token estimation: 1 token ~ 4 chars.
+        // A more accurate method would use a real tokenizer like tiktoken.
+        let line_tokens = (line.len() as f64 / 3.0).ceil() as usize;
+
+        if current_tokens + line_tokens > token_limit && !current_chunk.is_empty() {
+            chunks.push(current_chunk.clone());
+            current_chunk.clear();
+            current_tokens = 0;
         }
+
+        current_chunk.push_str(line);
+        current_chunk.push('\n');
+        current_tokens += line_tokens;
     }
-    
-    None
+
+    if !current_chunk.is_empty() {
+        chunks.push(current_chunk);
+    }
+
+    chunks
+}
+
+/// Processes a large text content by breaking it into chunks,
+/// summarizing each chunk in parallel, and then creating a final summary.
+pub async fn process_large_text(
+    llm_client: &dyn LLMClient,
+    content: &str,
+    prompt_name: &str,
+    combine_prompt_name: &str,
+    max_tokens: usize,
+) -> Result<String> {
+    let chunks = chunk_text(content, max_tokens);
+
+    // If there is only one chunk, process it directly.
+    if chunks.len() <= 1 {
+        return llm_client.call(content, prompt_name).await;
+    }
+
+    // Summarize each chunk in parallel.
+    let chunk_summaries_futures = chunks
+        .iter()
+        .map(|chunk| llm_client.call(chunk, prompt_name));
+
+    let chunk_summaries = join_all(chunk_summaries_futures)
+        .await
+        .into_iter()
+        .collect::<Result<Vec<String>>>()?;
+
+    // Combine the summaries.
+    let combined_summaries = chunk_summaries.join("\n---\n");
+    llm_client
+        .call(&combined_summaries, combine_prompt_name)
+        .await
 }

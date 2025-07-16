@@ -113,10 +113,11 @@ pub struct DiffAnalysis {
     pub needs_chunking: bool,
 }
 
-/// 估算文本的token数量
+/*
 fn estimate_token_count(text: &str) -> usize {
     text.len() / 3
 }
+*/
 
 pub async fn get_affected_files() -> Result<Vec<String>> {
     let head_exists = run_git_command(&["rev-parse", "--verify", "HEAD"])
@@ -255,7 +256,7 @@ pub async fn analyze_diff(diff: &str, config: &ModelConfig) -> Result<DiffAnalys
     })
 }
 
-/// 从diff行中提取文件路径
+/*
 fn extract_file_path_from_diff_line(line: &str) -> Option<String> {
     // 解析 "diff --git a/path/to/file b/path/to/file" 格式
     if let Some(start) = line.find("b/") {
@@ -269,6 +270,7 @@ fn extract_file_path_from_diff_line(line: &str) -> Option<String> {
         None
     }
 }
+*/
 
 
 /// 生成项目目录树

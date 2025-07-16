@@ -2,10 +2,11 @@
 use super::LLMClient;
 use crate::config::{ModelConfig, OpenAIProvider};
 use anyhow::{anyhow, Result};
+use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-// --- 数据结构定义 (适配 OpenAI/vLLM) ---
+// --- Data Structures (compatible with OpenAI/vLLM) ---
 #[derive(Serialize)]
 struct ChatMessage<'a> {
     role: &'a str,
@@ -17,6 +18,7 @@ struct OpenAIRequest<'a> {
     model: &'a str,
     messages: Vec<ChatMessage<'a>>,
     temperature: f32,
+    // Add other parameters like top_p, etc., if needed
 }
 
 #[derive(Deserialize)]
@@ -36,8 +38,8 @@ struct MessageContent {
 
 const FAKE_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 
-// --- 客户端实现 ---
-pub struct OpenClient {
+// --- Client Implementation ---
+pub struct OpenAIClient {
     api_key: String,
     model_name: String,
     api_base: String,
@@ -45,7 +47,7 @@ pub struct OpenClient {
     model_config: ModelConfig,
 }
 
-impl OpenClient {
+impl OpenAIClient {
     pub fn new(config: &OpenAIProvider) -> Result<Self> {
         let api_key = config.api_key.clone();
         let model_name = config.default_model.clone();
@@ -53,18 +55,16 @@ impl OpenClient {
             .unwrap_or(&"https://api.openai.com/v1".to_string())
             .clone();
 
-        // 获取模型配置，如果找不到具体模型配置，使用 default 配置
         let model_config = config.models.get(&model_name)
             .or_else(|| config.models.get("default"))
-            .ok_or_else(|| anyhow!("未找到模型 {} 的配置，也没有找到默认配置", model_name))?
+            .ok_or_else(|| anyhow!("Configuration for model '{}' not found, and no default configuration available.", model_name))?
             .clone();
 
-        // 构建 HTTP 客户端
         let mut client_builder = Client::builder().user_agent(FAKE_USER_AGENT);
         
-        // 如果配置了代理，使用代理
         if let Some(proxy_url) = &config.proxy {
-            let proxy = reqwest::Proxy::all(proxy_url)?;
+            let proxy = reqwest::Proxy::all(proxy_url)
+                .map_err(|e| anyhow!("Failed to create proxy: {}", e))?;
             client_builder = client_builder.proxy(proxy);
         }
         
@@ -73,15 +73,15 @@ impl OpenClient {
         Ok(Self {
             api_key,
             model_name,
-            api_base: format!("{}/chat/completions", api_base),
+            api_base: format!("{}/chat/completions", api_base.trim_end_matches('/')),
             client,
             model_config,
         })
     }
 }
 
-#[async_trait::async_trait]
-impl LLMClient for OpenClient {
+#[async_trait]
+impl LLMClient for OpenAIClient {
     fn name(&self) -> &str {
         "OpenAI"
     }
@@ -103,7 +103,7 @@ impl LLMClient for OpenClient {
                     content: user_prompt,
                 },
             ],
-            temperature: 0.6,
+            temperature: 0.7, // A slightly higher temperature might yield more creative results
         };
 
         let res = self
@@ -112,22 +112,25 @@ impl LLMClient for OpenClient {
             .bearer_auth(&self.api_key)
             .json(&request_payload)
             .send()
-            .await?;
+            .await
+            .map_err(|e| anyhow!("Failed to send request to OpenAI API: {}", e))?;
 
         let res_status = res.status();
 
         if res_status.is_success() {
-            let response = res.json::<OpenAIResponse>().await?;
+            let response = res.json::<OpenAIResponse>().await
+                .map_err(|e| anyhow!("Failed to parse JSON response from OpenAI API: {}", e))?;
+                
             if let Some(first_choice) = response.choices.first() {
                 Ok(first_choice.message.content.trim().to_string())
             } else {
-                Err(anyhow::anyhow!("API 调用成功，但返回的 'choices' 数组为空"))
+                Err(anyhow::anyhow!("API call successful, but the 'choices' array was empty."))
             }
         } else {
-            let error_body = res.text().await?;
-
+            let error_body = res.text().await
+                .unwrap_or_else(|_| "Could not retrieve error body".to_string());
             Err(anyhow!(
-                "调用 OpenAI 兼容 API 失败: {}\n响应体: {}",
+                "OpenAI compatible API call failed: {}\nResponse body: {}",
                 res_status,
                 error_body
             ))
