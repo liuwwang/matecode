@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build Release Assets
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            bin_name: matecode
+            asset_suffix: x86_64-unknown-linux-gnu.tar.gz
+          - os: macos-latest
+            target: x88_64-apple-darwin
+            bin_name: matecode
+            asset_suffix: x86_64-apple-darwin.tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bin_name: matecode.exe
+            asset_suffix: x86_64-pc-windows-msvc.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+
+      - name: Build binary
+        run: cargo build --release --target ${{ matrix.target }} --verbose
+
+      - name: Package artifact
+        shell: bash
+        run: |
+          # 创建一个目录来存放产物
+          mkdir -p artifacts
+          
+          # 根据操作系统进行打包
+          if [ "${{ runner.os }}" == "Windows" ]; then
+            7z a "artifacts/matecode-${{ github.ref_name }}-${{ matrix.asset_suffix }}" "target/${{ matrix.target }}/release/${{ matrix.bin_name }}"
+          else
+            tar -czvf "artifacts/matecode-${{ github.ref_name }}-${{ matrix.asset_suffix }}" -C "target/${{ matrix.target }}/release" ${{ matrix.bin_name }}
+          fi
+
+      - name: Upload artifact for release job
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-${{ matrix.os }}
+          path: artifacts/*
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: build-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all release assets
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          pattern: release-assets-*
+          merge-multiple: true
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          body: |
+            这是 `matecode` 的第一个版本！
+            
+            您可以在下方下载对应平台的二进制文件。 

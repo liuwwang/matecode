@@ -424,7 +424,7 @@ Please provide your review for the provided diff.
 
 fn get_report_prompt_template() -> &'static str {
     r#"[system]
-You are a senior project manager responsible for writing concise, clear, and insightful work summaries. Your goal is to synthesize a list of raw git commit messages from multiple projects into a unified report that is easy for stakeholders to understand. Group related items, use clear headings, and focus on the accomplishments and outcomes, not just the raw commit messages.
+You are a senior project manager responsible for writing concise, clear, and insightful work summaries. Your goal is to synthesize a list of raw git commit messages from multiple projects into a unified report that is easy for stakeholders to understand. Group related items, use clear headings, and focus on the accomplishments and outcomes, not just the raw commit messages. Group related items, use clear headings, and focus on the accomplishments and outcomes, not just the raw commit messages.
 
 [user]
 Please generate a work summary report in Markdown format based on the following commit messages from {start_date} to {end_date}.
