@@ -1,9 +1,9 @@
 //! src/llm/openai.rs
 use super::LLMClient;
+use crate::config::{ModelConfig, OpenAIProvider};
 use anyhow::{anyhow, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::env;
 
 // --- 数据结构定义 (适配 OpenAI/vLLM) ---
 #[derive(Serialize)]
@@ -42,37 +42,40 @@ pub struct OpenClient {
     model_name: String,
     api_base: String,
     client: Client,
+    model_config: ModelConfig,
 }
 
 impl OpenClient {
-    pub fn new() -> Result<Self> {
-        let api_key = env::var("OPENAI_API_KEY")
-            .map_err(|_| anyhow!("错误：请在 .env 文件中设置 OPENAI_API_KEY"))?;
+    pub fn new(config: &OpenAIProvider) -> Result<Self> {
+        let api_key = config.api_key.clone();
+        let model_name = config.default_model.clone();
+        let api_base = config.api_base.as_ref()
+            .unwrap_or(&"https://api.openai.com/v1".to_string())
+            .clone();
 
-        let model_name =
-            env::var("OPENAI_MODEL_NAME").unwrap_or_else(|_| "gpt-4-turbo".to_string());
+        // 获取模型配置，如果找不到具体模型配置，使用 default 配置
+        let model_config = config.models.get(&model_name)
+            .or_else(|| config.models.get("default"))
+            .ok_or_else(|| anyhow!("未找到模型 {} 的配置，也没有找到默认配置", model_name))?
+            .clone();
 
-        let api_base = env::var("OPENAI_API_URL")
-            .unwrap_or_else(|_| "https://api.openai.com/v1/chat/completions".to_string());
-
-        // 强制从环境变量构建代理
-        let proxy_url = env::var("ALL_PROXY").or_else(|_| env::var("HTTPS_PROXY")).ok();
-        let client = match proxy_url {
-            Some(url) => {
-                let proxy = reqwest::Proxy::all(&url)?;
-                Client::builder()
-                    .proxy(proxy)
-                    .user_agent(FAKE_USER_AGENT)
-                    .build()?
-            }
-            None => Client::builder().user_agent(FAKE_USER_AGENT).build()?,
-        };
+        // 构建 HTTP 客户端
+        let mut client_builder = Client::builder().user_agent(FAKE_USER_AGENT);
+        
+        // 如果配置了代理，使用代理
+        if let Some(proxy_url) = &config.proxy {
+            let proxy = reqwest::Proxy::all(proxy_url)?;
+            client_builder = client_builder.proxy(proxy);
+        }
+        
+        let client = client_builder.build()?;
 
         Ok(Self {
             api_key,
             model_name,
-            api_base,
+            api_base: format!("{}/chat/completions", api_base),
             client,
+            model_config,
         })
     }
 }
@@ -83,31 +86,8 @@ impl LLMClient for OpenClient {
         "OpenAI"
     }
 
-    fn context_config(&self) -> super::ContextConfig {
-        // 根据不同的OpenAI模型返回不同的配置
-        match self.model_name.as_str() {
-            "gpt-4-turbo" | "gpt-4-turbo-2024-04-09" => super::ContextConfig {
-                max_tokens: 128_000,
-                max_output_tokens: 4_096,
-                reserved_tokens: 2_000, // 为系统prompt和输出预留
-            },
-            "gpt-4" | "gpt-4-0613" => super::ContextConfig {
-                max_tokens: 8_192,
-                max_output_tokens: 4_096,
-                reserved_tokens: 1_500,
-            },
-            "gpt-3.5-turbo" | "gpt-3.5-turbo-0125" => super::ContextConfig {
-                max_tokens: 16_385,
-                max_output_tokens: 4_096,
-                reserved_tokens: 1_500,
-            },
-            // 默认配置（保守估计）
-            _ => super::ContextConfig {
-                max_tokens: 8_192,
-                max_output_tokens: 4_096,
-                reserved_tokens: 1_500,
-            },
-        }
+    fn model_config(&self) -> &ModelConfig {
+        &self.model_config
     }
 
     async fn call(&self, system_prompt: &str, user_prompt: &str) -> Result<String> {

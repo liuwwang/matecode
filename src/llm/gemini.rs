@@ -1,9 +1,9 @@
 //! src/llm/gemini.rs
 use super::LLMClient;
+use crate::config::{ModelConfig, GeminiProvider};
 use anyhow::{anyhow, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::env;
 
 #[derive(Serialize)]
 struct GeminiRequest<'a> {
@@ -46,32 +46,36 @@ pub struct GeminiClient {
     api_key: String,
     model_name: String,
     client: Client,
+    model_config: ModelConfig,
 }
 
 impl GeminiClient {
-    pub fn new() -> Result<Self> {
-        let api_key = env::var("GEMINI_API_KEY")
-            .map_err(|_| anyhow!("错误：请在 .env 文件中设置 GEMINI_API_KEY"))?;
-        let model_name =
-            env::var("GEMINI_MODEL_NAME").unwrap_or_else(|_| "gemini-pro".to_string());
+    pub fn new(config: &GeminiProvider) -> Result<Self> {
+        let api_key = config.api_key.clone();
+        let model_name = config.default_model.clone();
 
-        // 强制从环境变量构建代理
-        let proxy_url = env::var("ALL_PROXY").or_else(|_| env::var("HTTPS_PROXY")).ok();
-        let client = match proxy_url {
-            Some(url) => {
-                let proxy = reqwest::Proxy::all(&url)?;
-                Client::builder()
-                    .proxy(proxy)
-                    .user_agent(FAKE_USER_AGENT)
-                    .build()?
-            }
-            None => Client::builder().user_agent(FAKE_USER_AGENT).build()?,
-        };
+        // 获取模型配置，如果找不到具体模型配置，使用 default 配置
+        let model_config = config.models.get(&model_name)
+            .or_else(|| config.models.get("default"))
+            .ok_or_else(|| anyhow!("未找到模型 {} 的配置，也没有找到默认配置", model_name))?
+            .clone();
+
+        // 构建 HTTP 客户端
+        let mut client_builder = Client::builder().user_agent(FAKE_USER_AGENT);
+        
+        // 如果配置了代理，使用代理
+        if let Some(proxy_url) = &config.proxy {
+            let proxy = reqwest::Proxy::all(proxy_url)?;
+            client_builder = client_builder.proxy(proxy);
+        }
+        
+        let client = client_builder.build()?;
 
         Ok(Self {
             api_key,
             model_name,
             client,
+            model_config,
         })
     }
 }
@@ -82,16 +86,8 @@ impl LLMClient for GeminiClient {
         "Gemini"
     }
 
-    fn context_config(&self) -> super::ContextConfig {
-        // 根据不同的Gemini模型返回不同的配置
-        match self.model_name.as_str() {
-            // 默认配置（保守估计）
-            _ => super::ContextConfig {
-                max_tokens: 800_000,
-                max_output_tokens: 10_000,
-                reserved_tokens: 10_000,
-            },
-        }
+    fn model_config(&self) -> &ModelConfig {
+        &self.model_config
     }
 
     async fn call(&self, _system_prompt: &str, user_prompt: &str) -> Result<String> {

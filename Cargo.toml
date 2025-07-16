@@ -36,7 +36,7 @@ thiserror = "1.0.61"
 dateparser = "0.2.1"
 async-recursion = "1.1.1"
 futures = "0.3.31"
-toml = "0.9.2"
+toml = "0.8.12"
 
 # 平台特定依赖
 [target.'cfg(windows)'.dependencies]
@@ -58,3 +58,4 @@ opt-level = "z"      # 优化大小
 opt-level = 0        # 不优化，加快编译速度
 debug = true         # 包含调试信息
 overflow-checks = true # 开启溢出检查 
+
