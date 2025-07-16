@@ -11,31 +11,31 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    /// Generate a commit message based on staged changes.
+    /// 根据暂存的变更生成提交信息
     #[command(alias = "c")]
     Commit {
-        /// Stage all modified and deleted files before committing, same as `git commit -a`
+        /// 在提交前暂存所有修改和删除的文件，类似于 `git commit -a`
         #[arg(short, long)]
         all: bool,
     },
-    /// Generate a work report based on commit history.
+    /// 根据提交历史生成工作报告
     #[command(alias = "r")]
     Report {
-        /// The start date for the report (e.g., "2023-01-01", "7d ago"). Defaults to today.
+        /// 报告的开始日期 (例如 "2023-01-01", "7d ago")。默认为今天
         #[arg(long)]
         since: Option<String>,
 
-        /// The end date for the report (e.g., "2023-01-31"). Defaults to today.
+        /// 报告的结束日期 (例如 "2023-01-31")。默认为今天
         #[arg(long)]
         until: Option<String>,
     },
-    /// Perform an AI-powered review of staged code changes.
+    /// 对暂存的代码变更进行 AI 审查
     #[command(alias = "rev")]
     Review,
-    /// Initialize matecode configuration file.
+    /// 初始化 matecode 配置文件
     #[command(alias = "i")]
     Init,
-    /// [Internal] Archive the last commit message, used by git hooks.
+    /// [内部] 归档最后一条提交信息，由 git hooks 使用
     #[command(hide = true)]
     Archive,
 

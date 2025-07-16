@@ -78,6 +78,18 @@ pub async fn get_last_commit_message() -> Result<String> {
     run_git_command(&["log", "-1", "--pretty=%B"]).await
 }
 
+pub async fn is_git_repository() -> bool {
+    run_git_command(&["rev-parse", "--is-inside-work-tree"])
+        .await
+        .map(|s| s.trim() == "true")
+        .unwrap_or(false)
+}
+
+pub async fn get_staged_files() -> Result<Vec<String>> {
+    let output = run_git_command(&["diff", "--name-only", "--cached"]).await?;
+    Ok(output.lines().map(String::from).collect())
+}
+
 pub async fn analyze_diff(diff: &str, model_config: &ModelConfig) -> Result<DiffAnalysis> {
     let project_context = get_project_context().await?;
     let available_tokens = model_config.max_tokens - model_config.reserved_tokens;

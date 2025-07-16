@@ -101,7 +101,7 @@ pub async fn create_default_config() -> Result<()> {
         
         // 私有化部署模型的通用配置
         openai_models.insert("default".to_string(), ModelConfig {
-            max_tokens: 32_768,      // 大多数私有化模型的常见配置
+            max_tokens: 16_384,      // 大多数私有化模型的常见配置
             max_output_tokens: 4_096,
             reserved_tokens: 1_000,
         });
@@ -348,6 +348,9 @@ fn get_commit_prompt_template() -> &'static str {
     r#"[system]
 你是一位专业的 Git commit message 编写专家，你的目标是生成读起来像人类工程师编写的 commit message。你的回应**只能**包含 commit message 内容，不要有其他任何解释。严格遵守 Conventional Commits 规范，但描述部分使用中文。
 
+**重要：语言要求**
+{language_instruction}
+
 [user]
 请根据以下的项目上下文和 git diff 内容生成一个中文 git commit message。
 
@@ -388,74 +391,99 @@ feat(api): 实现用户认证功能
 
 fn get_review_prompt_template() -> &'static str {
     r#"[system]
-You are an expert code reviewer. Your task is to analyze a git diff and provide constructive feedback. Focus on identifying potential bugs, improving code quality, and ensuring best practices are followed. Be clear, concise, and provide actionable suggestions. Structure your review in Markdown format.
+你是一位经验丰富的代码审查专家。你的任务是帮助开发者发现代码中的问题并提供具体的改进建议。请用直接、实用的方式指出问题，不要客套话，重点关注代码质量、潜在问题和最佳实践。
+
+**重要：语言要求**
+{language_instruction}
 
 [user]
-Please review the following code changes provided in the git diff format.
+请审查以下代码变更，重点关注以下几个方面：
 
-## Git Diff:
 ```diff
 {diff_content}
 ```
 
-## Review Guidelines:
-1.  **Overall Assessment:** Start with a brief, high-level summary of the changes.
-2.  **Identify Issues and Suggestions:** For each file, provide specific feedback. Refer to line numbers where possible.
-    -   **[Logic]**: Potential bugs, race conditions, or logic errors.
-    -   **[Style]**: Code style, naming conventions, readability.
-    -   **[Best Practice]**: Suggestions for using language features or libraries more effectively.
-    -   **[Comment]**: Questions or requests for clarification.
-3.  **Use Markdown:** Structure the review using headings for each file and bullet points for individual comments.
-4.  **Be Constructive:** Frame your feedback positively. The goal is to help improve the code, not to criticize.
-5.  **Language**: The review should be in Chinese.
+## 审查重点:
 
-## Example Output:
+**🔍 必须检查的问题:**
+1. **安全漏洞**: 是否存在安全风险？
+2. **性能问题**: 是否有明显的性能瓶颈？
+3. **逻辑错误**: 边界条件、空值处理、错误处理是否完善？
+4. **资源泄漏**: 是否正确释放资源？
 
-### `src/main.rs`
-- **[Logic] at line 42:** The current logic might not handle empty input gracefully. Consider adding a check at the beginning of the function.
-- **[Style] at line 55:** The variable `temp_data` could be renamed to `user_profile` for better clarity.
+**📝 代码质量:**
+1. **可读性**: 变量命名、函数结构是否清晰？
+2. **重复代码**: 是否可以抽取公共逻辑？
+3. **复杂度**: 函数是否过于复杂，需要拆分？
+4. **一致性**: 是否符合项目的代码风格？
 
-### `src/utils.rs`
-- **[Best Practice] at line 12:** Instead of manually building the path string, consider using `PathBuf::join()` for better cross-platform compatibility.
+**⚡ 改进建议:**
+1. **更好的实现方式**: 有没有更简洁或更高效的写法？
+2. **最佳实践**: 是否遵循了语言/框架的最佳实践？
+3. **可维护性**: 未来修改这段代码会不会很困难？
 
-Please provide your review for the provided diff.
+## 输出格式:
+对于每个发现的问题，请按以下格式输出：
+
+**文件: `路径/文件名`**
+- **⚠️ [问题类型] 第X行:** 具体问题描述
+- **💡 建议:** 具体的改进方案
+- **🔧 示例:** (如果需要) 提供代码示例
+
+**示例:**
+**文件: `src/main.rs`**
+- **⚠️ [安全] 第 15 行:** 直接使用用户输入构建 SQL 查询，存在 SQL 注入风险
+- **💡 建议:** 使用参数化查询或 ORM 来避免 SQL 注入
+- **🔧 示例:** `query("SELECT * FROM users WHERE id = ?", [user_id])`
+
+- **⚠️ [性能] 第 32 行:** 在循环中重复调用数据库查询
+- **💡 建议:** 将查询移出循环，或使用批量查询
+
+如果代码质量很好，请简单说明哪些地方做得不错，然后重点指出还可以改进的地方。
+
+**重要:** 请直接指出问题，不要过分客气。目标是帮助代码变得更好。
 "#
 }
 
 fn get_report_prompt_template() -> &'static str {
     r#"[system]
-You are a senior project manager responsible for writing concise, clear, and insightful work summaries. Your goal is to synthesize a list of raw git commit messages from multiple projects into a unified report that is easy for stakeholders to understand. Group related items, use clear headings, and focus on the accomplishments and outcomes, not just the raw commit messages. Group related items, use clear headings, and focus on the accomplishments and outcomes, not just the raw commit messages.
+你是一位高级项目经理，负责撰写简洁、清晰且富有洞察力的工作总结。你的目标是将来自多个项目的原始 git commit 信息综合成一份统一的报告，以便于利益相关者理解。请将相关条目分组，使用清晰的标题，并专注于成果和产出，而不仅仅是罗列原始的提交信息。
+
+**重要：语言要求**
+{language_instruction}
 
 [user]
-Please generate a work summary report in Markdown format based on the following commit messages from {start_date} to {end_date}.
-The commits are grouped by project.
+请根据以下从 {start_date} 到 {end_date} 的提交信息，生成一份 Markdown 格式的工作总结报告。
+提交信息已按项目分组。
 
-## Raw Commits:
+## 原始提交记录:
 {commits}
 
-## Instructions:
-1.  **Analyze and Group:** Read through all the commit messages from all projects. Group them into logical categories (e.g., "Feature Development," "Bug Fixes," "Refactoring").
-2.  **Summarize Each Group:** For each category, write a high-level summary of the work accomplished. Use bullet points to list the key changes. **Crucially, you must mention which project the change belongs to.**
-3.  **Use Clear Headings:** Use Markdown headings (e.g., `### ✨ 新功能`) for each category.
-4.  **Focus on Impact:** Rephrase the commit messages to focus on the "what" and "why."
-5.  **Language:** The report should be in Chinese.
+## 指示:
+1.  **分析与分组:** 阅读所有项目的全部提交信息。将它们按逻辑类别分组（例如，"功能开发"、"问题修复"、"代码重构"）。
+2.  **总结每个分组:** 为每个类别撰写一个高层次的概要，总结所完成的工作。使用项目符号列出关键变更。**至关重要的是，你必须提及变更属于哪个项目。**
+3.  **使用清晰的标题:** 为每个类别使用 Markdown 标题（例如，`### ✨ 新功能`）。
+4.  **关注影响:** 重新表述提交信息，使其专注于"做了什么"和"为什么做"。
 
-## Desired Output Format:
+## 期望的输出格式:
 
 ### ✨ 新功能
 - [项目A] - 实现用户登录和注册功能。
-- [项目B] - 新增了数据导出的 API.
+- [项目B] - 新增了数据导出的 API。
 
 ### 🐛 问题修复
 - [项目A] - 修复了特定场景下闪退的问题。
 
-Please generate the report now.
+请立即生成报告。
 "#
 }
 
 fn get_summarize_prompt_template() -> &'static str {
     r#"[system]
 你是一个代码变更分析专家。你需要简洁地总结这个代码块的主要变更内容。你的回应**只能**包含被 <summary> 标签包裹的摘要。
+
+**重要：语言要求**
+{language_instruction}
 
 [user]
 请分析以下代码变更并生成简洁的中文摘要。
@@ -482,6 +510,9 @@ fn get_summarize_prompt_template() -> &'static str {
 fn get_combine_prompt_template() -> &'static str {
     r#"[system]
 你是一个根据代码变更摘要生成 Conventional Commits 规范的 git commit message 的专家。你的回应应该**只能**包含被 <commit_message> 标签包裹的 commit message，不包含任何额外的解释或引言。
+
+**重要：语言要求**
+{language_instruction}
  
 [user]
 请根据以下的项目上下文和代码变更摘要，为我生成一个高质量的、人类可读的中文 git commit message。
@@ -546,6 +577,30 @@ pub async fn get_prompt_template(name: &str) -> Result<String> {
         ));
     }
 
-    let content = fs::read_to_string(prompt_path).await?;
+    let mut content = fs::read_to_string(prompt_path).await?;
+    
+    // 加载配置以获取语言设置
+    let config = load_config().await?;
+    let language_instruction = get_language_instruction(&config.language);
+    
+    // 在提示词中插入语言设置
+    content = content.replace("{language_instruction}", &language_instruction);
+    
     Ok(content)
+}
+
+fn get_language_instruction(language: &str) -> String {
+    match language {
+        "zh-CN" => "请务必使用简体中文回复。所有输出内容都应该是中文，包括技术术语的描述和解释。".to_string(),
+        "en-US" => "Please respond in English. All output content should be in English, including technical terms and explanations.".to_string(),
+        "ja-JP" => "日本語で回答してください。すべての出力内容は日本語で、技術用語の説明も含めて日本語で記述してください。".to_string(),
+        "ko-KR" => "한국어로 답변해 주세요. 모든 출력 내용은 기술 용어 설명을 포함하여 한국어로 작성되어야 합니다.".to_string(),
+        "fr-FR" => "Veuillez répondre en français. Tout le contenu de sortie doit être en français, y compris les descriptions de termes techniques.".to_string(),
+        "de-DE" => "Bitte antworten Sie auf Deutsch. Alle Ausgabeinhalte sollten auf Deutsch sein, einschließlich der Beschreibungen technischer Begriffe.".to_string(),
+        "es-ES" => "Por favor responda en español. Todo el contenido de salida debe estar en español, incluidas las descripciones de términos técnicos.".to_string(),
+        "it-IT" => "Si prega di rispondere in italiano. Tutti i contenuti di output dovrebbero essere in italiano, comprese le descrizioni dei termini tecnici.".to_string(),
+        "pt-BR" => "Por favor, responda em português. Todo o conteúdo de saída deve estar em português, incluindo descrições de termos técnicos.".to_string(),
+        "ru-RU" => "Пожалуйста, отвечайте на русском языке. Все выходные данные должны быть на русском языке, включая описания технических терминов.".to_string(),
+        _ => format!("Please respond in the language: {}. All output content should be in this language, including technical terms and explanations.", language),
+    }
 }

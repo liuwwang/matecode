@@ -3,13 +3,13 @@
 use crate::config::{Config, ModelConfig, get_prompt_template};
 use crate::git::{DiffAnalysis, DiffChunk, ProjectContext};
 use anyhow::{anyhow, Result};
-use async_recursion::async_recursion;
 use async_trait::async_trait;
 use chrono::NaiveDate;
-use futures::future::join_all;
+use futures::stream::{self, StreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::collections::BTreeMap;
 use std::time::Duration;
+use tokio::time;
 
 pub mod gemini;
 pub mod openai;
@@ -56,17 +56,19 @@ pub async fn generate_commit_message(
 ) -> Result<String> {
     let progress_bar = ProgressBar::new_spinner();
     progress_bar.set_style(
-        ProgressStyle::with_template("{spinner} {msg}")
+        ProgressStyle::with_template("{spinner:.green} {msg}")
             .unwrap()
             .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"),
     );
     progress_bar.enable_steady_tick(Duration::from_millis(100));
+    progress_bar.set_message("Analyzing changes...");
 
     let analysis = crate::git::analyze_diff(diff, client.model_config()).await?;
 
     let commit_message = if analysis.needs_chunking {
-        generate_chunked_commit_message(client, &analysis).await?
+        generate_chunked_commit_message(client, &analysis, &progress_bar).await?
     } else {
+        progress_bar.set_message("Generating commit message...");
         generate_single_chunk_commit_message(client, &analysis).await?
     };
 
@@ -74,32 +76,38 @@ pub async fn generate_commit_message(
     Ok(commit_message)
 }
 
-#[async_recursion]
 async fn generate_chunked_commit_message(
     client: &dyn LLMClient,
     analysis: &DiffAnalysis,
+    progress_bar: &ProgressBar,
 ) -> Result<String> {
-    let progress_bar = ProgressBar::new(analysis.chunks.len() as u64);
     progress_bar.set_style(ProgressStyle::default_bar()
-        .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta}) {msg}")
+        .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}")
         .unwrap()
         .progress_chars("#>-"));
+    progress_bar.set_length(analysis.chunks.len() as u64);
+    progress_bar.set_position(0);
+    progress_bar.set_message("Summarizing chunks...");
 
-    let summary_futures = analysis.chunks.iter().map(|chunk| {
-        let pb_clone = progress_bar.clone();
+    let summaries_stream = stream::iter(analysis.chunks.iter().map(|chunk| {
+        let client = client;
+        let context = &analysis.context;
         async move {
-            let summary = summarize_chunk(client, &analysis.context, chunk).await;
-            pb_clone.inc(1);
-            summary
+            summarize_chunk(client, context, chunk).await
         }
-    });
-
-    let summaries = join_all(summary_futures)
-        .await
-        .into_iter()
-        .collect::<Result<Vec<String>>>()?;
+    }));
     
-    progress_bar.finish_with_message("✓ All chunks summarized.");
+    // Process chunks concurrently.
+    let mut summaries = Vec::with_capacity(analysis.chunks.len());
+    let mut buffered_stream = summaries_stream.buffer_unordered(4); // Concurrency level: 4
+
+    while let Some(result) = buffered_stream.next().await {
+        summaries.push(result?);
+        progress_bar.inc(1);
+    }
+    
+    progress_bar.set_style(ProgressStyle::with_template("{spinner:.green} {msg}").unwrap());
+    progress_bar.set_message("Combining summaries...");
 
     combine_summaries(client, &analysis.context, &summaries.join("\n\n")).await
 }
@@ -115,7 +123,7 @@ async fn generate_single_chunk_commit_message(
 
     let message = client.call(&system_prompt, &user_prompt).await?;
     extract_content(&message, "commit_message")
-        .ok_or_else(|| anyhow!("LLM failed to generate a valid commit message from a single chunk."))
+        .ok_or_else(|| anyhow!("LLM 无法从单个块生成有效的提交信息。"))
 }
 
 async fn summarize_chunk(client: &dyn LLMClient, context: &ProjectContext, chunk: &DiffChunk) -> Result<String> {
@@ -126,7 +134,7 @@ async fn summarize_chunk(client: &dyn LLMClient, context: &ProjectContext, chunk
 
     let summary = client.call(&system_prompt, &user_prompt).await?;
     extract_content(&summary, "summary")
-        .ok_or_else(|| anyhow!("LLM failed to generate a valid summary for a chunk."))
+        .ok_or_else(|| anyhow!("LLM 无法为代码块生成有效的摘要。"))
 }
 
 async fn combine_summaries(client: &dyn LLMClient, context: &ProjectContext, summaries: &str) -> Result<String> {
@@ -137,7 +145,7 @@ async fn combine_summaries(client: &dyn LLMClient, context: &ProjectContext, sum
 
     let message = client.call(&system_prompt, &user_prompt).await?;
     extract_content(&message, "commit_message")
-        .ok_or_else(|| anyhow!("LLM failed to combine summaries into a final commit message."))
+        .ok_or_else(|| anyhow!("LLM 无法将摘要合并为最终的提交信息。"))
 }
 
 pub async fn generate_report_from_commits(
@@ -167,15 +175,38 @@ pub async fn generate_code_review(
     
     let analysis = crate::git::analyze_diff(diff, client.model_config()).await?;
     
+    // 创建进度条
+    let progress_bar = ProgressBar::new(analysis.context.affected_files.len() as u64);
+    progress_bar.set_style(ProgressStyle::default_bar()
+        .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} 正在审查: {msg}")
+        .unwrap()
+        .progress_chars("#>-"));
+    
+    // 显示正在审查的文件
+    for (i, file) in analysis.context.affected_files.iter().enumerate() {
+        progress_bar.set_position(i as u64);
+        progress_bar.set_message(file.clone());
+        
+        // 添加一个小延迟让用户看到进度
+        time::sleep(Duration::from_millis(100)).await;
+    }
+    
+    progress_bar.set_message("生成审查报告...");
+    
     // For now, code review only supports single chunks.
     // We can extend this later to support chunking like commit messages.
     if analysis.needs_chunking {
-        return Err(anyhow!("Code review for large changes is not yet supported."));
+        progress_bar.finish_with_message("✗ 代码变更过大，暂不支持审查");
+        return Err(anyhow!("暂不支持审查大型代码变更。"));
     }
     
     let user_prompt = build_review_user_prompt(&user_prompt, &analysis.context, &analysis.chunks[0]);
 
-    client.call(&system_prompt, &user_prompt).await
+    let review = client.call(&system_prompt, &user_prompt).await?;
+    
+    progress_bar.finish_with_message("✓ 代码审查完成");
+    
+    Ok(review)
 }
 
 
