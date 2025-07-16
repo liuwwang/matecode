@@ -80,25 +80,32 @@ pub async fn get_last_commit_message() -> Result<String> {
 
 pub async fn analyze_diff(diff: &str, model_config: &ModelConfig) -> Result<DiffAnalysis> {
     let project_context = get_project_context().await?;
-    let max_tokens = model_config.max_tokens - model_config.reserved_tokens;
+    let available_tokens = model_config.max_tokens - model_config.reserved_tokens;
 
     // 首先估算整个 diff 的 token 数
     let total_tokens = estimate_token_count(diff);
-    
-    // 如果整个 diff 在 token 限制内，直接返回单个块
-    if total_tokens <= max_tokens {
+
+    // 如果整个 diff 在可用 token 限制内，直接返回单个块
+    if total_tokens <= available_tokens {
         return Ok(DiffAnalysis {
             context: project_context.clone(),
-            chunks: vec![DiffChunk::new(project_context.affected_files.clone(), diff.to_string())],
+            chunks: vec![DiffChunk::new(
+                project_context.affected_files.clone(),
+                diff.to_string(),
+            )],
             needs_chunking: false,
         });
     }
 
-    // 如果超过限制，需要分块
-    let chunks = chunk_large_text(diff, max_tokens);
-    let diff_chunks = chunks.into_iter().map(|chunk_content| {
-        DiffChunk::new(project_context.affected_files.clone(), chunk_content)
-    }).collect();
+    // 如果超过限制，需要分块。使用可用 token 的 3/4 作为每个块的硬限制，以留出余量。
+    let chunking_token_limit = (available_tokens * 3) / 4;
+    let chunks = chunk_large_text(diff, chunking_token_limit);
+    let diff_chunks = chunks
+        .into_iter()
+        .map(|chunk_content| {
+            DiffChunk::new(project_context.affected_files.clone(), chunk_content)
+        })
+        .collect();
 
     Ok(DiffAnalysis {
         context: project_context,
