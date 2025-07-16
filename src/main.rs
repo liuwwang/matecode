@@ -51,46 +51,9 @@ async fn run_linter(show_details: bool) -> Result<Option<String>> {
         println!("{}", "-".repeat(60));
     }
 
-    let output = match linter_cmd.to_command().output() {
-        Ok(output) => output,
-        Err(e) if e.kind() == ErrorKind::NotFound => {
-            if lang == "python" {
-                let ruff_path = toolchain::get_managed_tool_path("ruff")?;
-                if Confirm::with_theme(&ColorfulTheme::default())
-                    .with_prompt("Python linter 'ruff' 未找到。是否要自动为您下载并安装它？")
-                    .default(true)
-                    .interact()?
-                {
-                    toolchain::download_ruff()
-                        .await
-                        .context("下载 'ruff' 失败。")?;
-                    println!("✅ 'ruff' 下载并安装成功。");
-
-                    // Retry the command with the newly installed path
-                    let ruff_exe = ruff_path.to_str().unwrap();
-                    linter_cmd = toolchain::LinterCommand::new(ruff_exe, &["check", "."]);
-                    linter_cmd.to_command().output().context(format!(
-                        "无法执行安装后的命令 '{}'。",
-                        linter_cmd.to_string()
-                    ))?
-                } else {
-                    println!("好的，已跳过安装。");
-                    return Ok(None);
-                }
-            } else {
-                return Err(anyhow::Error::new(e).context(format!(
-                    "无法执行命令 '{}'。请确保 linter 已经安装并在您的 PATH 中。",
-                    linter_cmd.to_string()
-                )));
-            }
-        }
-        Err(e) => {
-            return Err(anyhow::Error::new(e).context(format!(
-                "执行命令 '{}' 时发生未知错误。",
-                linter_cmd.to_string()
-            )))
-        }
-    };
+    let output = linter_cmd.to_command()
+        .output()
+        .context(format!("无法执行命令 '{}'。请确保 linter 已经安装并在您的 PATH 中。", linter_cmd.to_string()))?;
 
     let stdout_str = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr_str = String::from_utf8_lossy(&output.stderr).to_string();
