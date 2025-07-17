@@ -357,6 +357,7 @@ fn get_commit_prompt_template() -> &'static str {
 
 [user]
 请根据以下的项目上下文和 git diff 内容生成一个中文 git commit message。
+你需要根据项目的改动信息，来生成一个考虑到对项目的影响，而不是只根据某个文件的改动生成一个简单的commit_message。
 
 <project_context>
 {project_tree}
@@ -453,10 +454,10 @@ fn get_review_prompt_template() -> &'static str {
 
 fn get_report_prompt_template() -> &'static str {
     r#"[system]
-你是一位高级项目经理，负责撰写简洁、清晰且富有洞察力的工作总结。你的目标是将来自多个项目的原始 git commit 信息综合成一份统一的报告，以便于利益相关者理解。请将相关条目分组，使用清晰的标题，并专注于成果和产出，而不仅仅是罗列原始的提交信息。
+你是一位开发者，你现在会阅读你最近提交的commit信息，并根据这些commit信息生成一份工作总结。你会使用清晰的标题，将成果和产出列出，而不是罗列原始的提交信息。
 
 **重要：语言要求**
-{language_instruction}
+回答和思考保持使用语言: {language_instruction}
 
 [user]
 请根据以下从 {start_date} 到 {end_date} 的提交信息，生成一份 Markdown 格式的工作总结报告。
@@ -470,6 +471,8 @@ fn get_report_prompt_template() -> &'static str {
 2.  **总结每个分组:** 为每个类别撰写一个高层次的概要，总结所完成的工作。使用项目符号列出关键变更。**至关重要的是，你必须提及变更属于哪个项目。**
 3.  **使用清晰的标题:** 为每个类别使用 Markdown 标题（例如，`### ✨ 新功能`）。
 4.  **关注影响:** 重新表述提交信息，使其专注于"做了什么"和"为什么做"。
+5.  **杜绝重复**： 不要出现重复的成果和产出, 比如新功能出现的内容肯定不要出现在其他主题内，请保持专业的态度来处理。
+6.  **保持简洁**： 不要出现冗长的描述，你应该根据commit的信息保持合适的篇幅，比如7天的总结，你只需要保持一到两百字左右的描述即可。
 
 ## 期望的输出格式:
 
