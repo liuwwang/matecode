@@ -350,7 +350,7 @@ async fn create_default_prompts(prompts_dir: &Path) -> Result<()> {
 
 fn get_commit_prompt_template() -> &'static str {
     r#"[system]
-你是一位专业的 Git commit message 编写专家，你的目标是生成读起来像人类工程师编写的 commit message。你的回应**只能**包含 commit message 内容，不要有其他任何解释。严格遵守 Conventional Commits 规范，但描述部分使用中文。
+你是一位专业的 Git commit message 编写专家，你的目标是生成人类工程师编写的 commit message。你的回应**只能**包含 commit message 内容，不要有其他任何解释。严格遵守 Angular 规范，但描述部分使用中文。
 
 **重要：语言要求**
 {language_instruction}
@@ -382,7 +382,7 @@ fn get_commit_prompt_template() -> &'static str {
 <commit_message>
 feat(api): 实现用户认证功能
 
-用户认证是系统的核心安全保障。本次提交引入了基于 JWT 的认证机制。
+用户认证是系统的核心安全保障, 引入了基于 JWT 的认证机制。
 - 使用 `jsonwebtoken` 库生成和验证 token。
 - 在 `auth` 中间件中实现 token 校验逻辑。
 </commit_message>
