@@ -53,22 +53,23 @@ elif [ "$OS" = "Linux" ]; then
     fi
     BINARY_NAME="matecode"
 
-elif [[ "$OS" == CYGWIN* || "$OS" == MINGW* || "$OS" == MSYS* ]]; then
-    print_info "检测到 Windows 环境 ($ARCH)"
-    # Note: Shell scripts on Windows often run in environments like Git Bash or WSL.
-    # This part assumes a Unix-like environment with curl, tar, unzip, and mv.
-    # For native Windows cmd/PowerShell, a different approach (e.g., .exe installer) is needed.
-    if [ "$ARCH" = "x86_64" ]; then
-        FILENAME="matecode-${VERSION}-x86_64-pc-windows-msvc.zip" # Assuming .zip for Windows
-    # Removed ARM Windows support as requested
-    # elif [ "$ARCH" = "aarch64" ]; then
-    #     FILENAME="matecode-${VERSION}-aarch64-pc-windows-msvc.zip"
-    else
-        print_error "不支持的 Windows 架构: $ARCH"
-    fi
-    BINARY_NAME="matecode.exe"
-    INSTALL_DIR="$HOME/bin" # Suggest installing in user's home bin directory
-    print_warning "将在 $INSTALL_DIR 安装。请确保此目录在您的 PATH 环境变量中。"
+# Removed Windows support as requested
+# elif [[ "$OS" == CYGWIN* || "$OS" == MINGW* || "$OS" == MSYS* ]]; then
+#     print_info "检测到 Windows 环境 ($ARCH)"
+#     # Note: Shell scripts on Windows often run in environments like Git Bash or WSL.
+#     # This part assumes a Unix-like environment with curl, tar, unzip, and mv.
+#     # For native Windows cmd/PowerShell, a different approach (e.g., .exe installer) is needed.
+#     if [ "$ARCH" = "x86_64" ]; then
+#         FILENAME="matecode-${VERSION}-x86_64-pc-windows-msvc.zip" # Assuming .zip for Windows
+#     # Removed ARM Windows support as requested
+#     # elif [ "$ARCH" = "aarch64" ]; then
+#     #     FILENAME="matecode-${VERSION}-aarch64-pc-windows-msvc.zip"
+#     else
+#         print_error "不支持的 Windows 架构: $ARCH"
+#     fi
+#     BINARY_NAME="matecode.exe"
+#     INSTALL_DIR="$HOME/bin" # Suggest installing in user's home bin directory
+#     print_warning "将在 $INSTALL_DIR 安装。请确保此目录在您的 PATH 环境变量中。"
 
 else
     print_error "不支持的操作系统: $OS"
@@ -161,12 +162,6 @@ echo "   $BINARY_NAME --help"
 echo "   $BINARY_NAME init"
 echo "   $BINARY_NAME commit"
 
-# Add to PATH instruction for Windows user-specific install
-if [[ "$OS" == CYGWIN* || "$OS" == MINGW* || "$OS" == MSYS* ]] && [ "$INSTALL_DIR" = "$HOME/bin" ]; then
-    echo ""
-    echo "⚠️ 重要提示 (Windows 用户):"
-    echo "   为了能在任何目录下直接运行 '$BINARY_NAME' 命令，请确保 '$INSTALL_DIR' 目录已添加到您的系统 PATH 环境变量中。"
-    echo "   通常，您需要编辑您的 shell 配置文件（如 ~/.bashrc, ~/.zshrc, 或 Windows 的环境变量设置）来添加 '$INSTALL_DIR'。"
-fi
+# Removed Windows-specific PATH instructions as Windows support is removed from this script.
 
 exit 0
