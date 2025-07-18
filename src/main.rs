@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use colored::Colorize;
-use dialoguer::{theme::ColorfulTheme, Confirm, Select};
+use dialoguer::{theme::ColorfulTheme, Confirm, Select, Input};
 use lazy_static::lazy_static;
 use regex::Regex;
 
@@ -203,6 +203,7 @@ async fn main() -> Result<()> {
                     "✅ 直接提交",
                     "📝 编辑后提交",
                     "🔄 重新生成",
+                    "💬 AI对话改进",
                     "❌ 退出",
                 ];
 
@@ -255,6 +256,85 @@ async fn main() -> Result<()> {
                         continue;
                     }
                     3 => {
+                        // AI对话改进
+                        loop {
+                            let user_feedback: String = Input::with_theme(&ColorfulTheme::default())
+                                .with_prompt("💬 请告诉我您希望如何改进这条提交信息")
+                                .allow_empty(false)
+                                .interact_text()?;
+                            
+                            if user_feedback.trim().is_empty() {
+                                println!("未输入任何反馈，返回选择菜单。");
+                                break;
+                            }
+                            
+                            println!("🤖 正在根据您的反馈改进提交信息...");
+                            
+                            // 构建改进提示
+                            let improvement_prompt = format!(
+                                "用户对以下提交信息有改进建议：\n\n当前提交信息：\n{}\n\n用户反馈：\n{}\n\n请根据用户的反馈改进提交信息，保持简洁明了，符合conventional commits格式。只返回改进后的提交信息，不要添加额外的解释。",
+                                commit_message, user_feedback
+                            );
+                            
+                            match llm_client.as_client().call("你是一个专业的Git提交信息助手，擅长根据用户反馈改进提交信息。", &improvement_prompt).await {
+                                Ok(improved_message) => {
+                                    let improved_message = improved_message.replace('`', "'").trim().to_string();
+                                    
+                                    println!("\n{}", "=".repeat(60));
+                                    println!("{}", "改进后的提交信息:".green());
+                                    println!("{}", improved_message.cyan());
+                                    println!("{}", "=".repeat(60));
+                                    
+                                    let feedback_options = &[
+                                        "✅ 使用改进后的版本",
+                                        "🔄 继续改进",
+                                        "↩️ 返回原始版本",
+                                    ];
+                                    
+                                    let feedback_selection = Select::with_theme(&ColorfulTheme::default())
+                                        .with_prompt("您对改进后的提交信息满意吗？")
+                                        .items(&feedback_options[..])
+                                        .default(0)
+                                        .interact()?;
+                                    
+                                    match feedback_selection {
+                                        0 => {
+                                            // 使用改进后的版本
+                                            commit_message = improved_message;
+                                            println!("✨ 已采用改进后的提交信息！");
+                                            break;
+                                        }
+                                        1 => {
+                                            // 继续改进
+                                            commit_message = improved_message;
+                                            println!("🔄 好的，请继续告诉我您的改进建议：");
+                                            continue;
+                                        }
+                                        2 => {
+                                            // 返回原始版本
+                                            println!("↩️ 已返回原始提交信息。");
+                                            break;
+                                        }
+                                        _ => unreachable!(),
+                                    }
+                                }
+                                Err(e) => {
+                                    println!("❌ 改进提交信息时出错: {}", e);
+                                    println!("您可以继续尝试或返回选择菜单。");
+                                    
+                                    if !Confirm::with_theme(&ColorfulTheme::default())
+                                        .with_prompt("是否继续尝试改进？")
+                                        .default(false)
+                                        .interact()?
+                                    {
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        continue;
+                    }
+                    4 => {
                         // 退出
                         println!("好的，操作已取消。");
                         break;
