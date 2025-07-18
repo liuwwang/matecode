@@ -33,11 +33,6 @@ fn get_extension_map() -> HashMap<&'static str, &'static str> {
     map
 }
 
-/// Detects the primary programming language of the project in the current directory.
-///
-/// It works by walking the file tree (respecting .gitignore),
-/// counting the occurrences of file extensions, and returning the identifier
-/// for the most common language.
 pub fn detect_project_language() -> Result<Option<String>> {
     let mut lang_counts: HashMap<&str, usize> = HashMap::new();
     let extension_map = get_extension_map();
@@ -63,4 +58,4 @@ pub fn detect_project_language() -> Result<Option<String>> {
     let primary_language = lang_counts.into_iter().max_by_key(|&(_, count)| count);
 
     Ok(primary_language.map(|(lang, _)| lang.to_string()))
-} 
+}

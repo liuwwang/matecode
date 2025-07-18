@@ -1,7 +1,7 @@
 //! src/llm/openai.rs
 use super::LLMClient;
 use crate::config::{ModelConfig, OpenAIProvider};
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -51,7 +51,9 @@ impl OpenAIClient {
     pub fn new(config: &OpenAIProvider) -> Result<Self> {
         let api_key = config.api_key.clone();
         let model_name = config.default_model.clone();
-        let api_base = config.api_base.as_ref()
+        let api_base = config
+            .api_base
+            .as_ref()
             .unwrap_or(&"https://api.openai.com/v1".to_string())
             .clone();
 
@@ -61,13 +63,13 @@ impl OpenAIClient {
             .clone();
 
         let mut client_builder = Client::builder().user_agent(FAKE_USER_AGENT);
-        
+
         if let Some(proxy_url) = &config.proxy {
             let proxy = reqwest::Proxy::all(proxy_url)
                 .map_err(|e| anyhow!("Failed to create proxy: {}", e))?;
             client_builder = client_builder.proxy(proxy);
         }
-        
+
         let client = client_builder.build()?;
 
         Ok(Self {
@@ -114,16 +116,22 @@ impl LLMClient for OpenAIClient {
         let res_status = res.status();
 
         if res_status.is_success() {
-            let response = res.json::<OpenAIResponse>().await
+            let response = res
+                .json::<OpenAIResponse>()
+                .await
                 .map_err(|e| anyhow!("Failed to parse JSON response from OpenAI API: {}", e))?;
-                
+
             if let Some(first_choice) = response.choices.first() {
                 Ok(first_choice.message.content.trim().to_string())
             } else {
-                Err(anyhow::anyhow!("API call successful, but the 'choices' array was empty."))
+                Err(anyhow::anyhow!(
+                    "API call successful, but the 'choices' array was empty."
+                ))
             }
         } else {
-            let error_body = res.text().await
+            let error_body = res
+                .text()
+                .await
                 .unwrap_or_else(|_| "Could not retrieve error body".to_string());
             Err(anyhow!(
                 "OpenAI compatible API call failed: {}\nResponse body: {}",

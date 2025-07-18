@@ -1,17 +1,14 @@
 //! src/llm/gemini.rs
 use super::LLMClient;
-use crate::config::{ModelConfig, GeminiProvider};
-use anyhow::{anyhow, Result};
+use crate::config::{GeminiProvider, ModelConfig};
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-// --- Data Structures (for Gemini API) ---
-
 #[derive(Serialize)]
 struct GeminiRequest<'a> {
     contents: Vec<Content<'a>>,
-    // We can add generationConfig here if needed
 }
 
 #[derive(Serialize)]
@@ -64,13 +61,13 @@ impl GeminiClient {
             .clone();
 
         let mut client_builder = Client::builder().user_agent(FAKE_USER_AGENT);
-        
+
         if let Some(proxy_url) = &config.proxy {
             let proxy = reqwest::Proxy::all(proxy_url)
                 .map_err(|e| anyhow!("Failed to create proxy: {}", e))?;
             client_builder = client_builder.proxy(proxy);
         }
-        
+
         let client = client_builder.build()?;
 
         Ok(Self {
@@ -91,7 +88,7 @@ impl LLMClient for GeminiClient {
     async fn call(&self, _system_prompt: &str, user_prompt: &str) -> Result<String> {
         // Gemini API does not have a separate system prompt, so we prepend it to the user prompt.
         let full_prompt = if !_system_prompt.is_empty() {
-            format!("{}\n\n{}", _system_prompt, user_prompt)
+            format!("{_system_prompt}\n\n{user_prompt}")
         } else {
             user_prompt.to_string()
         };
@@ -118,9 +115,11 @@ impl LLMClient for GeminiClient {
         let res_status = res.status();
 
         if res_status.is_success() {
-            let response = res.json::<GeminiResponse>().await
+            let response = res
+                .json::<GeminiResponse>()
+                .await
                 .map_err(|e| anyhow!("Failed to parse JSON response from Gemini API: {}", e))?;
-            
+
             response
                 .candidates
                 .first()
@@ -130,7 +129,9 @@ impl LLMClient for GeminiClient {
                 .map(|s| s.trim().to_string())
                 .ok_or_else(|| anyhow!("Could not extract text from Gemini API response."))
         } else {
-            let error_body = res.text().await
+            let error_body = res
+                .text()
+                .await
                 .unwrap_or_else(|_| "Could not retrieve error body".to_string());
             Err(anyhow!(
                 "Gemini API call failed: {} {}\nResponse body: {}",

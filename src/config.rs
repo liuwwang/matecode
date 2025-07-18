@@ -90,7 +90,7 @@ pub struct GeminiProvider {
 pub async fn create_default_config() -> Result<()> {
     let config_dir = get_config_dir().await?;
     let config_path = config_dir.join("config.toml");
-    
+
     // Create prompts directory
     let prompts_dir = config_dir.join("prompts");
     if !prompts_dir.exists() {
@@ -101,22 +101,28 @@ pub async fn create_default_config() -> Result<()> {
     if !config_path.exists() {
         // 只保留必要的模型配置
         let mut openai_models = HashMap::new();
-        
+
         // 私有化部署模型的通用配置
-        openai_models.insert("default".to_string(), ModelConfig {
-            max_tokens: 16_384,      // 大多数私有化模型的常见配置
-            max_output_tokens: 4_096,
-            reserved_tokens: 1_000,
-        });
+        openai_models.insert(
+            "default".to_string(),
+            ModelConfig {
+                max_tokens: 16_384, // 大多数私有化模型的常见配置
+                max_output_tokens: 4_096,
+                reserved_tokens: 1_000,
+            },
+        );
 
         let mut gemini_models = HashMap::new();
-        
+
         // Gemini 2.5 Flash 配置
-        gemini_models.insert("gemini-2.0-flash-exp".to_string(), ModelConfig {
-            max_tokens: 1_048_576,   // Gemini 2.5 Flash 的实际参数
-            max_output_tokens: 8_192,
-            reserved_tokens: 2_000,
-        });
+        gemini_models.insert(
+            "gemini-2.0-flash-exp".to_string(),
+            ModelConfig {
+                max_tokens: 1_048_576, // Gemini 2.5 Flash 的实际参数
+                max_output_tokens: 8_192,
+                reserved_tokens: 2_000,
+            },
+        );
 
         let default_config = Config {
             provider: "openai".to_string(),
@@ -142,7 +148,7 @@ pub async fn create_default_config() -> Result<()> {
         let config_content = toml::to_string_pretty(&default_config)?;
         let mut file = fs::File::create(&config_path).await?;
         file.write_all(config_content.as_bytes()).await?;
-        
+
         println!("✅ 已创建默认配置文件: {config_path:?}");
     } else {
         println!("⚠️  配置文件已存在，跳过创建: {config_path:?}");
@@ -158,13 +164,13 @@ pub async fn create_default_config() -> Result<()> {
     println!("\n📝 请编辑配置文件，设置您的 API 密钥:");
     println!("   {}", config_path.display());
     println!("\n💡 提示：私有化部署模型会自动使用 'default' 配置，无需手动添加每个模型。");
-    
+
     Ok(())
 }
 
 async fn create_default_ignore_file(config_dir: &Path) -> Result<()> {
     let ignore_file_path = config_dir.join(".matecode-ignore");
-    
+
     // 只在文件不存在时才创建
     if !ignore_file_path.exists() {
         let ignore_content = get_default_ignore_content();
@@ -173,7 +179,7 @@ async fn create_default_ignore_file(config_dir: &Path) -> Result<()> {
     } else {
         println!("⚠️  忽略文件已存在，跳过创建: {ignore_file_path:?}");
     }
-    
+
     Ok(())
 }
 
@@ -276,8 +282,7 @@ pub async fn load_config() -> Result<Config> {
     let config_content = fs::read_to_string(config_path)
         .await
         .context("无法读取配置文件")?;
-    let config: Config =
-        toml::from_str(&config_content).context("配置文件格式错误")?;
+    let config: Config = toml::from_str(&config_content).context("配置文件格式错误")?;
 
     // Validate configuration
     validate_config(&config)?;
@@ -290,9 +295,7 @@ fn validate_config(config: &Config) -> Result<()> {
         "openai" => {
             if let Some(openai) = &config.llm.openai {
                 if openai.api_key == "YOUR_OPENAI_API_KEY" {
-                    return Err(anyhow::anyhow!(
-                        "请在配置文件中设置有效的 OpenAI API 密钥"
-                    ));
+                    return Err(anyhow::anyhow!("请在配置文件中设置有效的 OpenAI API 密钥"));
                 }
             } else {
                 return Err(anyhow::anyhow!(
@@ -303,9 +306,7 @@ fn validate_config(config: &Config) -> Result<()> {
         "gemini" => {
             if let Some(gemini) = &config.llm.gemini {
                 if gemini.api_key == "YOUR_GEMINI_API_KEY" {
-                    return Err(anyhow::anyhow!(
-                        "请在配置文件中设置有效的 Gemini API 密钥"
-                    ));
+                    return Err(anyhow::anyhow!("请在配置文件中设置有效的 Gemini API 密钥"));
                 }
             } else {
                 return Err(anyhow::anyhow!(
@@ -314,10 +315,7 @@ fn validate_config(config: &Config) -> Result<()> {
             }
         }
         _ => {
-            return Err(anyhow::anyhow!(
-                "不支持的 LLM 提供商: {}",
-                config.provider
-            ));
+            return Err(anyhow::anyhow!("不支持的 LLM 提供商: {}", config.provider));
         }
     }
     Ok(())
@@ -335,7 +333,7 @@ async fn create_default_prompts(prompts_dir: &Path) -> Result<()> {
 
     for (filename, content) in prompt_templates {
         let file_path = prompts_dir.join(filename);
-        
+
         // 只在文件不存在时才创建
         if !file_path.exists() {
             fs::write(&file_path, content).await?;
@@ -578,7 +576,7 @@ feat(history): 引入提交历史归档与日报生成功能
 pub async fn get_prompt_template(name: &str) -> Result<String> {
     let config_dir = get_config_dir().await?;
     let prompt_path = config_dir.join("prompts").join(format!("{name}.toml"));
-    
+
     if !prompt_path.exists() {
         return Err(anyhow::anyhow!(
             "提示词模板文件不存在: {prompt_path:?}。请运行 'matecode init' 重新创建。",
@@ -586,14 +584,14 @@ pub async fn get_prompt_template(name: &str) -> Result<String> {
     }
 
     let mut content = fs::read_to_string(prompt_path).await?;
-    
+
     // 加载配置以获取语言设置
     let config = load_config().await?;
     let language_instruction = get_language_instruction(&config.language);
-    
+
     // 在提示词中插入语言设置
     content = content.replace("{language_instruction}", &language_instruction);
-    
+
     Ok(content)
 }
 
@@ -615,12 +613,21 @@ fn get_language_instruction(language: &str) -> String {
 
 fn default_linters() -> HashMap<String, String> {
     let mut linters = HashMap::new();
-    linters.insert("rust".to_string(), "cargo clippy -- -D warnings".to_string());
+    linters.insert(
+        "rust".to_string(),
+        "cargo clippy -- -D warnings".to_string(),
+    );
     linters.insert("python".to_string(), "ruff check .".to_string());
     linters.insert("javascript".to_string(), "eslint .".to_string());
     linters.insert("typescript".to_string(), "eslint .".to_string());
     linters.insert("go".to_string(), "go vet ./...".to_string());
-    linters.insert("java".to_string(), "# (需要配置) e.g., checkstyle -c /path/to/google_checks.xml .".to_string());
-    linters.insert("cpp".to_string(), "# (需要配置) e.g., clang-tidy **/*.cpp --".to_string());
+    linters.insert(
+        "java".to_string(),
+        "# (需要配置) e.g., checkstyle -c /path/to/google_checks.xml .".to_string(),
+    );
+    linters.insert(
+        "cpp".to_string(),
+        "# (需要配置) e.g., clang-tidy **/*.cpp --".to_string(),
+    );
     linters
 }
