@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF OCR 坐标验证工具</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+        }
+
+        .upload-section {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .upload-box {
+            flex: 1;
+            border: 2px dashed #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            background-color: #fafafa;
+            transition: border-color 0.3s;
+        }
+
+        .upload-box:hover {
+            border-color: #007bff;
+        }
+
+        .upload-box.dragover {
+            border-color: #007bff;
+            background-color: #e3f2fd;
+        }
+
+        .upload-box h3 {
+            margin-top: 0;
+            color: #555;
+        }
+
+        .upload-box p {
+            color: #777;
+            margin: 10px 0;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .upload-btn {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .upload-btn:hover {
+            background-color: #0056b3;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .control-group label {
+            font-weight: bold;
+            color: #555;
+        }
+
+        select, input {
+            padding: 5px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .canvas-container {
+            position: relative;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+            background-color: white;
+            margin-top: 20px;
+        }
+
+        .canvas-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+
+        canvas {
+            display: block;
+            background-color: #fff;
+        }
+
+        .bbox {
+            position: absolute;
+            border: 2px solid;
+            pointer-events: none;
+            opacity: 0.7;
+        }
+
+        .bbox-layout {
+            border-color: #ff4444;
+        }
+
+        .bbox-span {
+            border-color: #4444ff;
+        }
+
+        .bbox-char {
+            border-color: #44ff44;
+        }
+
+        .bbox-target {
+            border-color: #ff8800;
+            border-width: 3px;
+        }
+
+        .legend {
+            display: flex;
+            gap: 20px;
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 3px;
+            border-radius: 1px;
+        }
+
+        .info-panel {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+        }
+
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            display: none;
+        }
+
+        .status.success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+
+        .status.error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+
+        .target-input {
+            margin-top: 15px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+
+        .target-input textarea {
+            width: 100%;
+            height: 100px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: monospace;
+            resize: vertical;
+        }
+
+        .highlight-btn {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        .highlight-btn:hover {
+            background-color: #218838;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>PDF OCR 坐标验证工具</h1>
+        
+        <div class="status" id="status"></div>
+
+        <div class="upload-section">
+            <div class="upload-box" id="pageListUpload">
+                <h3>上传 Page List 数据</h3>
+                <p>拖拽或点击上传包含 page_list 的 JSON 文件</p>
+                <input type="file" class="file-input" id="pageListFile" accept=".json">
+                <button class="upload-btn" onclick="document.getElementById('pageListFile').click()">选择文件</button>
+            </div>
+            
+            <div class="upload-box" id="detailUpload">
+                <h3>上传详细识别数据</h3>
+                <p>拖拽或点击上传包含 pages 的 JSON 文件</p>
+                <input type="file" class="file-input" id="detailFile" accept=".json">
+                <button class="upload-btn" onclick="document.getElementById('detailFile').click()">选择文件</button>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label for="pageSelect">页面:</label>
+                <select id="pageSelect">
+                    <option value="">选择页面</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="showLayout">显示布局:</label>
+                <input type="checkbox" id="showLayout" checked>
+            </div>
+            
+            <div class="control-group">
+                <label for="showSpans">显示文本块:</label>
+                <input type="checkbox" id="showSpans" checked>
+            </div>
+            
+            <div class="control-group">
+                <label for="showChars">显示字符:</label>
+                <input type="checkbox" id="showChars">
+            </div>
+            
+            <div class="control-group">
+                <label for="scaleSlider">缩放:</label>
+                <input type="range" id="scaleSlider" min="0.1" max="2" step="0.1" value="1">
+                <span id="scaleValue">100%</span>
+            </div>
+        </div>
+
+        <div class="target-input">
+            <h3>目标坐标高亮</h3>
+            <p>输入要高亮显示的坐标 (格式: [x1, y1, x2, y2])，每行一个：</p>
+            <textarea id="targetCoords" placeholder="例如:
+[73, 37, 174, 64]
+[101, 43, 172, 52]"></textarea>
+            <button class="highlight-btn" onclick="highlightTargetCoords()">高亮目标坐标</button>
+        </div>
+
+        <div class="canvas-container">
+            <div class="canvas-wrapper" id="canvasWrapper">
+                <canvas id="canvas"></canvas>
+            </div>
+        </div>
+
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #ff4444;"></div>
+                <span>布局区域 (Layout)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #4444ff;"></div>
+                <span>文本块 (Spans)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #44ff44;"></div>
+                <span>字符 (Chars)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #ff8800;"></div>
+                <span>目标坐标</span>
+            </div>
+        </div>
+
+        <div class="info-panel" id="infoPanel">
+            <h3>使用说明</h3>
+            <ul>
+                <li>上传两个JSON文件：page_list数据和详细识别数据</li>
+                <li>选择要查看的页面</li>
+                <li>使用复选框控制显示哪些类型的坐标框</li>
+                <li>在目标坐标输入框中输入要验证的坐标</li>
+                <li>使用缩放滑块调整显示大小</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        let pageListData = null;
+        let detailData = null;
+        let currentScale = 1;
+
+        // 文件上传处理
+        function setupFileUpload() {
+            const pageListUpload = document.getElementById('pageListUpload');
+            const detailUpload = document.getElementById('detailUpload');
+            const pageListFile = document.getElementById('pageListFile');
+            const detailFile = document.getElementById('detailFile');
+
+            // 拖拽事件
+            [pageListUpload, detailUpload].forEach(uploadBox => {
+                uploadBox.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    uploadBox.classList.add('dragover');
+                });
+
+                uploadBox.addEventListener('dragleave', () => {
+                    uploadBox.classList.remove('dragover');
+                });
+
+                uploadBox.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    uploadBox.classList.remove('dragover');
+                    
+                    const files = e.dataTransfer.files;
+                    if (files.length > 0) {
+                        const input = uploadBox.querySelector('.file-input');
+                        input.files = files;
+                        input.dispatchEvent(new Event('change'));
+                    }
+                });
+            });
+
+            // 文件选择事件
+            pageListFile.addEventListener('change', (e) => {
+                handleFileUpload(e.target.files[0], 'pageList');
+            });
+
+            detailFile.addEventListener('change', (e) => {
+                handleFileUpload(e.target.files[0], 'detail');
+            });
+        }
+
+        // 处理文件上传
+        function handleFileUpload(file, type) {
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    
+                    if (type === 'pageList') {
+                        pageListData = data;
+                        showStatus('Page List 数据加载成功', 'success');
+                    } else {
+                        detailData = data;
+                        showStatus('详细识别数据加载成功', 'success');
+                    }
+
+                    updatePageSelect();
+                    
+                } catch (error) {
+                    showStatus(`文件解析失败: ${error.message}`, 'error');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // 显示状态信息
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+            status.style.display = 'block';
+            
+            setTimeout(() => {
+                status.style.display = 'none';
+            }, 3000);
+        }
+
+        // 更新页面选择器
+        function updatePageSelect() {
+            const pageSelect = document.getElementById('pageSelect');
+            pageSelect.innerHTML = '<option value="">选择页面</option>';
+
+            if (pageListData && pageListData.page_list) {
+                pageListData.page_list.forEach((page, index) => {
+                    const option = document.createElement('option');
+                    option.value = index;
+                    option.textContent = `页面 ${page.page_info.page_no || index}`;
+                    pageSelect.appendChild(option);
+                });
+            }
+
+            if (detailData && detailData.pages) {
+                detailData.pages.forEach((page, index) => {
+                    const option = document.createElement('option');
+                    option.value = index;
+                    option.textContent = `详细页面 ${page.page_info.page_no || index}`;
+                    pageSelect.appendChild(option);
+                });
+            }
+        }
+
+        // 渲染页面
+        function renderPage() {
+            const pageSelect = document.getElementById('pageSelect');
+            const selectedIndex = parseInt(pageSelect.value);
+            
+            if (isNaN(selectedIndex)) return;
+
+            let pageData = null;
+            let isDetailPage = false;
+
+            // 确定使用哪个数据源
+            if (detailData && detailData.pages && selectedIndex < detailData.pages.length) {
+                pageData = detailData.pages[selectedIndex];
+                isDetailPage = true;
+            } else if (pageListData && pageListData.page_list && selectedIndex < pageListData.page_list.length) {
+                pageData = pageListData.page_list[selectedIndex];
+            }
+
+            if (!pageData) return;
+
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            const canvasWrapper = document.getElementById('canvasWrapper');
+
+            // 设置画布尺寸
+            const pageWidth = pageData.page_info.width;
+            const pageHeight = pageData.page_info.height;
+            
+            canvas.width = pageWidth * currentScale;
+            canvas.height = pageHeight * currentScale;
+
+            // 清除画布
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 绘制白色背景
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 清除之前的bbox元素
+            const existingBoxes = canvasWrapper.querySelectorAll('.bbox');
+            existingBoxes.forEach(box => box.remove());
+
+            // 渲染各种坐标框
+            if (document.getElementById('showLayout').checked) {
+                renderBboxes(pageData.layout_dets, 'bbox-layout', canvasWrapper);
+            }
+
+            if (document.getElementById('showSpans').checked && pageData.layout_dets) {
+                pageData.layout_dets.forEach(layout => {
+                    if (layout.spans) {
+                        renderBboxes(layout.spans, 'bbox-span', canvasWrapper);
+                    }
+                });
+            }
+
+            if (document.getElementById('showChars').checked && isDetailPage && pageData.layout_dets) {
+                pageData.layout_dets.forEach(layout => {
+                    if (layout.spans) {
+                        layout.spans.forEach(span => {
+                            if (span.chars) {
+                                renderBboxes(span.chars, 'bbox-char', canvasWrapper);
+                            }
+                        });
+                    }
+                });
+            }
+        }
+
+        // 渲染坐标框
+        function renderBboxes(items, className, container) {
+            items.forEach(item => {
+                const bbox = item.bbox;
+                if (!bbox || bbox.length < 4) return;
+
+                const div = document.createElement('div');
+                div.className = `bbox ${className}`;
+                div.style.left = `${bbox[0] * currentScale}px`;
+                div.style.top = `${bbox[1] * currentScale}px`;
+                div.style.width = `${(bbox[2] - bbox[0]) * currentScale}px`;
+                div.style.height = `${(bbox[3] - bbox[1]) * currentScale}px`;
+                
+                // 添加hover效果显示文本信息
+                if (item.text || item.char) {
+                    div.title = item.text || item.char;
+                }
+
+                container.appendChild(div);
+            });
+        }
+
+        // 高亮目标坐标
+        function highlightTargetCoords() {
+            const targetCoords = document.getElementById('targetCoords').value;
+            const canvasWrapper = document.getElementById('canvasWrapper');
+            
+            // 清除之前的目标坐标框
+            const existingTargets = canvasWrapper.querySelectorAll('.bbox-target');
+            existingTargets.forEach(box => box.remove());
+
+            if (!targetCoords.trim()) return;
+
+            const lines = targetCoords.trim().split('\n');
+            lines.forEach(line => {
+                try {
+                    const coords = JSON.parse(line.trim());
+                    if (Array.isArray(coords) && coords.length >= 4) {
+                        const div = document.createElement('div');
+                        div.className = 'bbox bbox-target';
+                        div.style.left = `${coords[0] * currentScale}px`;
+                        div.style.top = `${coords[1] * currentScale}px`;
+                        div.style.width = `${(coords[2] - coords[0]) * currentScale}px`;
+                        div.style.height = `${(coords[3] - coords[1]) * currentScale}px`;
+                        div.title = `目标坐标: [${coords.join(', ')}]`;
+                        
+                        canvasWrapper.appendChild(div);
+                    }
+                } catch (error) {
+                    console.warn('Invalid coordinate format:', line);
+                }
+            });
+        }
+
+        // 初始化事件监听器
+        function initEventListeners() {
+            document.getElementById('pageSelect').addEventListener('change', renderPage);
+            
+            ['showLayout', 'showSpans', 'showChars'].forEach(id => {
+                document.getElementById(id).addEventListener('change', renderPage);
+            });
+
+            const scaleSlider = document.getElementById('scaleSlider');
+            const scaleValue = document.getElementById('scaleValue');
+            
+            scaleSlider.addEventListener('input', (e) => {
+                currentScale = parseFloat(e.target.value);
+                scaleValue.textContent = `${Math.round(currentScale * 100)}%`;
+                renderPage();
+                highlightTargetCoords(); // 重新渲染目标坐标
+            });
+        }
+
+        // 初始化应用
+        function init() {
+            setupFileUpload();
+            initEventListeners();
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
