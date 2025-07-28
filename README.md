@@ -1,5 +1,7 @@
 # matecode
 
+一个基于 AI 的代码管理工具，支持自动生成提交信息、代码审查和工作报告。
+
 [![Rust CI](https://github.com/liuwwang/matecode/actions/workflows/ci.yml/badge.svg)](https://github.com/liuwwang/matecode/actions/workflows/ci.yml)
 [![Latest Release](https://img.shields.io/github/v/release/liuwwang/matecode)](https://github.com/liuwwang/matecode/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
