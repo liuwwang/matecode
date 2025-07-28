@@ -39,7 +39,7 @@ pub enum Commands {
         lint: bool,
     },
 
-    /// AI生成工作报告,支持指定起始日期
+    /// AI生成工作报告,支持指定起始日期或预定义周期
     Report {
         /// 开始时间
         #[arg(short, long)]
@@ -48,6 +48,10 @@ pub enum Commands {
         /// 结束时间
         #[arg(short, long)]
         until: Option<String>,
+
+        /// 预定义时间周期: today/t(今天), week/w(最近一周), month/m(最近一个月), quarter/q(最近一个季度), year/y(最近一年)
+        #[arg(short, long)]
+        period: Option<String>,
     },
 
     /// 进行代码风格检查
