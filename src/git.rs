@@ -75,7 +75,7 @@ pub async fn get_git_repo_name() -> Result<String> {
 
 /// 获取最近一条commit-message
 pub async fn get_last_commit_message() -> Result<String> {
-    run_git_command(&["log", "-l", "--pretty=%B"]).await
+    run_git_command(&["log", "-1", "--pretty=%B"]).await
 }
 
 /// 判断当前目录是否是一个git仓库
