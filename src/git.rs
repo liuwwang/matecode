@@ -92,7 +92,7 @@ pub async fn get_staged_files() -> Result<Vec<String>> {
     Ok(output.lines().map(String::from).collect())
 }
 
-///下面都是helper的代码，不再是原生的git操作了
+/// 下面都是helper的代码，不再是原生的git操作了
 
 /// 获取项目上下文信息
 pub async fn get_project_context() -> Result<ProjectContext> {
