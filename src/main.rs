@@ -4,6 +4,7 @@ mod git;
 mod history;
 mod language;
 mod llm;
+mod plan;
 
 use anyhow::Result;
 use clap::Parser;
@@ -27,6 +28,12 @@ async fn main() -> Result<()> {
         commands::Commands::Archive => commands::archive::handle_archive().await?,
         commands::Commands::InstallHook => {
             commands::install_hook::install_post_commit_hook().await?
+        }
+        commands::Commands::Branch { description, create, from_staged } => {
+            commands::branch::handle_branch(description, create, from_staged).await?
+        }
+        commands::Commands::Plan { description, interactive, design_only, status, continue_plan, smart } => {
+            commands::plan::handle_plan(description, interactive, design_only, status, continue_plan, smart).await?
         }
     }
 

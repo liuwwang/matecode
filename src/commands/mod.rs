@@ -1,8 +1,10 @@
 pub mod archive;
+pub mod branch;
 pub mod commit;
 pub mod init;
 pub mod install_hook;
 pub mod linter;
+pub mod plan;
 pub mod report;
 pub mod review;
 
@@ -66,5 +68,45 @@ pub enum Commands {
         /// 启用lint
         #[arg(short, long)]
         lint: bool,
+    },
+
+    /// AI生成分支名称
+    Branch {
+        /// 功能描述
+        description: String,
+
+        /// 直接创建并切换到新分支
+        #[arg(short, long)]
+        create: bool,
+
+        /// 基于当前暂存区变更生成分支名
+        #[arg(long)]
+        from_staged: bool,
+    },
+
+    /// AI生成开发计划
+    Plan {
+        /// 功能需求描述
+        description: String,
+
+        /// 交互式执行计划
+        #[arg(short, long)]
+        interactive: bool,
+
+        /// 只生成计划，不执行
+        #[arg(long)]
+        design_only: bool,
+
+        /// 查看计划状态
+        #[arg(long)]
+        status: bool,
+
+        /// 继续执行未完成的计划
+        #[arg(long)]
+        continue_plan: bool,
+
+        /// 使用智能生成器（实验性功能）
+        #[arg(long)]
+        smart: bool,
     },
 }

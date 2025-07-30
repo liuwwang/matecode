@@ -329,6 +329,8 @@ async fn create_default_prompts(prompts_dir: &Path) -> Result<()> {
         ("report.toml", get_report_prompt_template()),
         ("summarize.toml", get_summarize_prompt_template()),
         ("combine.toml", get_combine_prompt_template()),
+        ("branch.toml", get_generate_branch_prompt_template()),
+        ("plan.toml", get_plan_prompt_template())
     ];
 
     for (filename, content) in prompt_templates {
@@ -572,6 +574,126 @@ feat(history): 引入提交历史归档与日报生成功能
 </example>
 "#
 }
+
+fn get_generate_branch_prompt_template() -> &'static str {
+    r#"[system]
+你是我的 Git 分支命名专家。你的任务是根据我提供的功能描述，生成一个符合项目规范且清晰的分支名称。
+
+**重要：语言要求**
+{language_instruction}
+
+**分支命名规范:**
+- 使用 conventional commits 风格的前缀：feat/, fix/, docs/, style/, refactor/, test/, chore/
+- 使用小写字母和连字符分隔单词
+- 保持简洁但具有描述性
+- 避免使用特殊字符和空格
+
+**规则:**
+1. 你的回应**只能**包含被 `<branch_name>` 标签包裹的分支名称
+2. 不要有任何其他解释、说明或额外的文本
+
+[user]
+请根据以下功能描述生成合适的分支名称：
+
+功能描述: {description}
+
+{staged_context}
+
+请生成一个符合规范的分支名称。
+
+**示例:**
+功能描述: 修复支付页面按钮点击无响应的 bug
+输出: <branch_name>fix/payment-page-button-unresponsive</branch_name>
+"#
+}
+
+fn get_plan_prompt_template() -> &'static str {
+    r#"[system]
+你是一个资深的软件架构师和开发专家。你的任务是根据用户的需求描述和项目上下文，生成一个完整的开发计划。
+
+**重要：语言要求**
+{language_instruction}
+
+你需要分析项目结构，理解现有代码，然后生成一个包含以下内容的详细开发计划：
+1. 合适的分支名称
+2. 技术实现方案
+3. 需要创建/修改的文件列表
+4. 具体的代码框架和伪代码
+5. 实施步骤
+
+请严格按照以下 XML 格式返回结果，确保结构清晰且可解析。**重要：必须严格遵循示例格式，不要添加额外的标签或改变结构。**
+
+[user]
+**需求描述:** {description}
+
+**项目信息:**
+- 语言: {project_language}
+- 框架: {project_framework}
+- 架构说明: {architecture_notes}
+
+**项目结构:**
+{project_structure}
+
+**相关现有文件:**
+{related_files}
+
+请生成一个完整的开发计划，包含分支名称、技术方案、文件操作和代码框架。
+
+**格式要求：**
+1. 必须返回完整的 XML 结构，包含所有必需的标签
+2. 所有标签必须正确闭合
+3. 文件内容中的特殊字符（如 `<`, `>`, `&`）会被自动处理，请直接书写
+4. 不要在 XML 外添加任何解释文字
+
+返回格式要求：
+```xml
+<plan>
+  <branch_name>feat/example-feature</branch_name>
+  <technical_approach>技术实现方案的详细描述</technical_approach>
+  <complexity>Low|Medium|High|VeryHigh</complexity>
+
+  <actions>
+    <action type="CreateBranch">
+      <name>feat/example-feature</name>
+    </action>
+    <action type="CreateFile">
+      <path>src/example.rs</path>
+      <content>文件内容</content>
+    </action>
+    <action type="ModifyFile">
+      <path>src/main.rs</path>
+      <changes>
+        <change line="10" type="Insert">新代码</change>
+      </changes>
+    </action>
+    <action type="CreateDirectory">
+      <path>src/auth</path>
+    </action>
+    <action type="RunCommand">
+      <command>cargo add jsonwebtoken</command>
+      <description>添加JWT依赖</description>
+    </action>
+    <action type="AddToChangelog">
+      <entry>添加用户认证功能</entry>
+    </action>
+  </actions>
+
+  <affected_files>
+    <file>src/example.rs</file>
+    <file>src/main.rs</file>
+  </affected_files>
+
+  <dependencies>
+    <dependency>jsonwebtoken = "8.0"</dependency>
+    <dependency>bcrypt = "0.14"</dependency>
+  </dependencies>
+
+  <implementation_notes>实施说明和注意事项</implementation_notes>
+</plan>
+```
+"#
+}
+
 
 pub async fn get_prompt_template(name: &str) -> Result<String> {
     let config_dir = get_config_dir().await?;
