@@ -58,165 +58,51 @@ async fn get_staged_context() -> Result<String> {
     Ok(context)
 }
 
-/// 智能生成分支名称（不依赖 LLM）
+/// 智能生成分支名称（简化版，要求输入英文描述）
 pub fn generate_smart_branch_name(description: &str) -> String {
-    // 中文到英文的简单映射
-    let translated = translate_to_english(description);
+    // 验证输入是否包含中文字符
+    if contains_chinese(description) {
+        eprintln!("⚠️  警告: 分支描述应使用英文，当前输入包含中文字符");
+        eprintln!("💡 建议: 请使用英文描述，例如 'add user authentication' 而不是'添加用户认证'");
+    }
 
     // 清理和格式化分支名称
-    let sanitized = translated
+    let sanitized = description
         .to_lowercase()
         .chars()
         .filter(|c| c.is_ascii_alphanumeric() || *c == ' ' || *c == '-')
         .collect::<String>()
         .split_whitespace()
-        .take(4)  // 增加到4个词以获得更好的描述性
+        .take(4)  // 限制为4个词以获得更好的描述性
         .collect::<Vec<_>>()
         .join("-");
 
-    // 根据描述内容判断分支类型
-    let prefix = determine_branch_type(&translated);
+    // 如果清理后为空，使用默认名称
+    if sanitized.is_empty() {
+        return "feature/new-feature".to_string();
+    }
+
+    // 检测分支类型并添加前缀
+    let prefix = determine_branch_type(description);
 
     format!("{}/{}", prefix, sanitized)
 }
 
-/// 简单的中文到英文翻译映射
-fn translate_to_english(description: &str) -> String {
-    let mut result = description.to_string();
-
-    // 常见的中文词汇映射
-    let translations = [
-        ("修复", "fix"),
-        ("修改", "fix"),
-        ("解决", "fix"),
-        ("bug", "bug"),
-        ("错误", "bug"),
-        ("问题", "issue"),
-        ("添加", "add"),
-        ("新增", "add"),
-        ("增加", "add"),
-        ("创建", "create"),
-        ("实现", "implement"),
-        ("开发", "develop"),
-        ("功能", "feature"),
-        ("特性", "feature"),
-        ("重构", "refactor"),
-        ("优化", "optimize"),
-        ("改进", "improve"),
-        ("更新", "update"),
-        ("升级", "upgrade"),
-        ("删除", "remove"),
-        ("移除", "remove"),
-        ("文档", "docs"),
-        ("说明", "docs"),
-        ("测试", "test"),
-        ("单元测试", "unit-test"),
-        ("集成测试", "integration-test"),
-        ("性能", "performance"),
-        ("配置", "config"),
-        ("设置", "config"),
-        ("用户", "user"),
-        ("登录", "login"),
-        ("注册", "register"),
-        ("认证", "auth"),
-        ("权限", "permission"),
-        ("数据库", "database"),
-        ("接口", "api"),
-        ("界面", "ui"),
-        ("页面", "page"),
-        ("组件", "component"),
-        ("模块", "module"),
-        ("服务", "service"),
-        ("工具", "tool"),
-        ("脚本", "script"),
-        ("命令", "command"),
-        ("参数", "param"),
-        ("变量", "variable"),
-        ("方法", "method"),
-        ("函数", "function"),
-        ("类", "class"),
-        ("结构", "structure"),
-        ("架构", "architecture"),
-        ("框架", "framework"),
-        ("库", "library"),
-        ("依赖", "dependency"),
-        ("包", "package"),
-        ("版本", "version"),
-        ("发布", "release"),
-        ("部署", "deploy"),
-        ("构建", "build"),
-        ("编译", "compile"),
-        ("打包", "package"),
-        ("安装", "install"),
-        ("卸载", "uninstall"),
-        ("启动", "start"),
-        ("停止", "stop"),
-        ("重启", "restart"),
-        ("运行", "run"),
-        ("执行", "execute"),
-        ("处理", "handle"),
-        ("管理", "manage"),
-        ("控制", "control"),
-        ("监控", "monitor"),
-        ("日志", "log"),
-        ("记录", "record"),
-        ("报告", "report"),
-        ("统计", "statistics"),
-        ("分析", "analysis"),
-        ("搜索", "search"),
-        ("查询", "query"),
-        ("过滤", "filter"),
-        ("排序", "sort"),
-        ("分页", "pagination"),
-        ("缓存", "cache"),
-        ("存储", "storage"),
-        ("备份", "backup"),
-        ("恢复", "restore"),
-        ("同步", "sync"),
-        ("异步", "async"),
-        ("并发", "concurrent"),
-        ("线程", "thread"),
-        ("进程", "process"),
-        ("队列", "queue"),
-        ("消息", "message"),
-        ("通知", "notification"),
-        ("邮件", "email"),
-        ("短信", "sms"),
-        ("支付", "payment"),
-        ("订单", "order"),
-        ("商品", "product"),
-        ("购物车", "cart"),
-        ("地址", "address"),
-        ("位置", "location"),
-        ("地图", "map"),
-        ("图片", "image"),
-        ("文件", "file"),
-        ("上传", "upload"),
-        ("下载", "download"),
-        ("导入", "import"),
-        ("导出", "export"),
-        ("格式", "format"),
-        ("解析", "parse"),
-        ("验证", "validate"),
-        ("校验", "validate"),
-        ("检查", "check"),
-        ("扫描", "scan"),
-        ("清理", "clean"),
-        ("整理", "organize"),
-    ];
-
-    // 应用翻译映射，在替换时添加空格分隔
-    for (chinese, english) in &translations {
-        if result.contains(chinese) {
-            result = result.replace(chinese, &format!(" {} ", english));
-        }
-    }
-
-    // 清理多余的空格
-    result = result.split_whitespace().collect::<Vec<_>>().join(" ");
-
-    result
+/// 检测字符串是否包含中文字符
+fn contains_chinese(text: &str) -> bool {
+    text.chars().any(|c| {
+        let code = c as u32;
+        // 中文字符的 Unicode 范围
+        (0x4E00..=0x9FFF).contains(&code) || // CJK 统一汉字
+        (0x3400..=0x4DBF).contains(&code) || // CJK 扩展 A
+        (0x20000..=0x2A6DF).contains(&code) || // CJK 扩展 B
+        (0x2A700..=0x2B73F).contains(&code) || // CJK 扩展 C
+        (0x2B740..=0x2B81F).contains(&code) || // CJK 扩展 D
+        (0x2B820..=0x2CEAF).contains(&code) // CJK 扩展 E
+    })
 }
+
+// 翻译函数已完全移除 - 现在要求直接使用英文描述
 
 /// 根据描述确定分支类型
 fn determine_branch_type(description: &str) -> &'static str {

@@ -609,17 +609,28 @@ fn get_generate_branch_prompt_template() -> &'static str {
 
 fn get_plan_prompt_template() -> &'static str {
     r#"[system]
-你是一个资深的软件架构师和开发专家。你的任务是根据用户的需求描述和项目上下文，生成一个完整的开发计划。
+你是一个资深的软件架构师和开发专家。你的任务是根据用户的需求描述和项目上下文，生成一个完整、可执行的开发计划。
 
-**重要：语言要求**
+**核心原则：**
+1. **实用性优先**: 生成的计划必须是可执行的，避免过度复杂的设计
+2. **渐进式实现**: 将复杂功能分解为简单的步骤
+3. **最佳实践**: 遵循目标语言和框架的最佳实践
+4. **安全考虑**: 考虑安全性和错误处理
+
+**语言要求：**
 {language_instruction}
 
-你需要分析项目结构，理解现有代码，然后生成一个包含以下内容的详细开发计划：
-1. 合适的分支名称
-2. 技术实现方案
-3. 需要创建/修改的文件列表
-4. 具体的代码框架和伪代码
-5. 实施步骤
+**分析要求：**
+1. 仔细分析现有项目结构和代码
+2. 识别需要修改的关键文件
+3. 考虑与现有代码的集成点
+4. 评估实现复杂度和潜在风险
+
+**输出要求：**
+- 生成符合项目风格的代码
+- 提供清晰的实施步骤
+- 包含必要的依赖和配置
+- 考虑测试和文档需求
 
 请严格按照以下 XML 格式返回结果，确保结构清晰且可解析。**重要：必须严格遵循示例格式，不要添加额外的标签或改变结构。**
 
@@ -637,13 +648,20 @@ fn get_plan_prompt_template() -> &'static str {
 **相关现有文件:**
 {related_files}
 
-请生成一个完整的开发计划，包含分支名称、技术方案、文件操作和代码框架。
+**任务：**
+请基于以上信息生成一个完整的开发计划。重点关注：
+1. 与现有代码的集成
+2. 遵循项目的编码风格
+3. 考虑错误处理和边界情况
+4. 提供可测试的实现
 
 **格式要求：**
 1. 必须返回完整的 XML 结构，包含所有必需的标签
 2. 所有标签必须正确闭合
 3. 文件内容中的特殊字符（如 `<`, `>`, `&`）会被自动处理，请直接书写
 4. 不要在 XML 外添加任何解释文字
+5. 代码内容要完整且可编译
+6. 考虑实际的项目约束和依赖
 
 返回格式要求：
 ```xml
@@ -658,23 +676,24 @@ fn get_plan_prompt_template() -> &'static str {
     </action>
     <action type="CreateFile">
       <path>src/example.rs</path>
-      <content>文件内容</content>
+      <content>完整的文件内容，包含必要的导入、结构定义、实现和测试</content>
     </action>
     <action type="ModifyFile">
       <path>src/main.rs</path>
       <changes>
-        <change line="10" type="Insert">新代码</change>
+        <change line="10" type="Insert">新增的代码行</change>
+        <change line="15" type="Replace">替换的代码行</change>
       </changes>
     </action>
     <action type="CreateDirectory">
-      <path>src/auth</path>
+      <path>src/new_module</path>
     </action>
     <action type="RunCommand">
-      <command>cargo add jsonwebtoken</command>
-      <description>添加JWT依赖</description>
+      <command>cargo add serde --features derive</command>
+      <description>添加序列化依赖</description>
     </action>
     <action type="AddToChangelog">
-      <entry>添加用户认证功能</entry>
+      <entry>添加 [功能描述] 功能</entry>
     </action>
   </actions>
 
@@ -684,13 +703,38 @@ fn get_plan_prompt_template() -> &'static str {
   </affected_files>
 
   <dependencies>
-    <dependency>jsonwebtoken = "8.0"</dependency>
-    <dependency>bcrypt = "0.14"</dependency>
+    <dependency>serde = { version = "1.0", features = ["derive"] }</dependency>
+    <dependency>tokio = { version = "1.0", features = ["full"] }</dependency>
   </dependencies>
 
-  <implementation_notes>实施说明和注意事项</implementation_notes>
+  <implementation_notes>
+    实施说明：
+    1. 首先创建基础结构
+    2. 实现核心功能
+    3. 添加错误处理
+    4. 编写测试
+    5. 更新文档
+
+    注意事项：
+    - 确保与现有 API 兼容
+    - 考虑性能影响
+    - 添加适当的日志记录
+  </implementation_notes>
+
+  <testing_strategy>
+    测试策略：
+    1. 单元测试：测试核心功能
+    2. 集成测试：测试与现有系统的集成
+    3. 边界测试：测试错误情况和边界条件
+  </testing_strategy>
 </plan>
 ```
+
+**重要提醒：**
+- 确保所有 XML 标签正确闭合
+- 代码内容要完整且可编译
+- 考虑实际的项目约束和依赖
+- 提供具体的实现细节，而不是抽象描述
 "#
 }
 

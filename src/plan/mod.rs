@@ -7,8 +7,8 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 pub mod analyzer;
-pub mod generator;
 pub mod executor;
+pub mod generator;
 pub mod storage;
 
 /// 计划状态
@@ -387,6 +387,95 @@ pub enum Priority {
     Critical,
 }
 
+/// 需求分析结果 - AI 对用户需求的深度理解
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RequirementAnalysis {
+    pub intent: UserIntent,
+    pub scope: RequirementScope,
+    pub approach: String,
+    pub architecture_notes: String,
+    pub dependencies: Vec<String>,
+    pub complexity: ComplexityLevel,
+    pub key_components: Vec<ComponentRequirement>,
+    pub constraints: Vec<String>,
+}
+
+/// 用户意图分析
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct UserIntent {
+    pub primary_goal: String,
+    pub secondary_goals: Vec<String>,
+    pub user_type: UserType,
+    pub urgency: UrgencyLevel,
+}
+
+/// 需求范围
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RequirementScope {
+    pub feature_type: FeatureType,
+    pub affected_layers: Vec<ArchitectureLayer>,
+    pub integration_points: Vec<String>,
+    pub external_dependencies: Vec<String>,
+}
+
+/// 组件需求
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ComponentRequirement {
+    pub name: String,
+    pub purpose: String,
+    pub interfaces: Vec<String>,
+    pub dependencies: Vec<String>,
+    pub estimated_effort: EffortLevel,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum UserType {
+    Developer,
+    EndUser,
+    Administrator,
+    System,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum UrgencyLevel {
+    Low,
+    Medium,
+    High,
+    Critical,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum FeatureType {
+    NewFeature,
+    Enhancement,
+    BugFix,
+    Refactoring,
+    Configuration,
+    Documentation,
+    Testing,
+    Performance,
+    Security,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum ArchitectureLayer {
+    Presentation,
+    Business,
+    Data,
+    Infrastructure,
+    Configuration,
+    Testing,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum EffortLevel {
+    Trivial,    // < 1 hour
+    Small,      // 1-4 hours
+    Medium,     // 4-16 hours
+    Large,      // 1-3 days
+    ExtraLarge, // > 3 days
+}
+
 /// 执行配置
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ExecutionConfig {
@@ -538,7 +627,12 @@ impl PlanGenerator {
             related_files,
         );
 
+        println!("🤖 正在调用 AI 生成详细计划...");
+        println!("📡 发送请求到 LLM API (这可能需要几秒钟)...");
+
         let response = llm_client.as_client().call(&system_prompt, &user_prompt).await?;
+
+        println!("✅ 收到 AI 响应，正在解析计划结构...");
 
         // 解析 LLM 响应为结构化的 Plan
         self.parse_plan_response(&response, description).await

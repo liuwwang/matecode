@@ -1,3 +1,4 @@
+mod analyzers;
 mod commands;
 mod config;
 mod git;

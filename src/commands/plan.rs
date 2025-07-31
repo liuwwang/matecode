@@ -32,55 +32,24 @@ pub async fn handle_plan(
     generate_new_plan(description, interactive, design_only, smart).await
 }
 
-/// 生成新的开发计划
+/// 生成新的开发计划 - 简化版
 async fn generate_new_plan(description: String, interactive: bool, design_only: bool, smart: bool) -> Result<()> {
-    println!("{}", "🤖 正在分析项目结构...".cyan());
+    println!("{}", "🧠 正在生成开发计划...".cyan());
 
     let plan = if smart {
-        // 使用智能生成器 - 直接生成最终计划
-        println!("{}", "🧠 使用智能生成器（实验性功能）...".yellow());
-        let smart_generator = crate::plan::generator::PlanGenerator::new().await?;
-        smart_generator.generate_comprehensive_plan(&description).await?
-    } else {
-        // 使用原有生成器 - 支持重试和用户反馈
+        // 智能模式：使用真实 LLM（mod.rs 中的 PlanGenerator）
+        println!("{}", "🧠 使用智能模式（真实 LLM）...".yellow());
         let generator = PlanGenerator::new().await?;
-
-        loop {
-            println!("{}", "🧠 正在生成开发计划...".cyan());
-
-            // 生成计划（这里需要处理 token 限制）
-            let plan: Plan = match generate_plan_with_retry(&generator, &description).await {
-                Ok(plan) => plan,
-                Err(e) => {
-                    eprintln!("{} {}", "❌ 计划生成失败:".red(), e);
-                    return Err(e);
-                }
-            };
-
-            // 显示计划
-            display_plan(&plan)?;
-
-            // 询问用户是否满意
-            if !ask_user_satisfaction()? {
-                println!("{}", "🔄 正在重新生成计划...".yellow());
-                continue;
-            }
-
-            break plan;
-        }
+        generator.generate_plan(&description).await?
+    } else {
+        // 简单模式：使用简化的生成器（generator.rs 中的 PlanGenerator）
+        println!("{}", "📝 使用简单模式（模板生成）...".cyan());
+        let generator = crate::plan::generator::PlanGenerator::new().await?;
+        generator.generate_simple_plan(&description).await?
     };
 
     // 显示计划
     display_plan(&plan)?;
-
-    // 对于智能生成器，跳过用户满意度询问
-    if !smart {
-        // 询问用户是否满意
-        if !ask_user_satisfaction()? {
-            println!("{}", "🔄 智能生成器暂不支持重新生成，请使用普通模式".yellow());
-            return Ok(());
-        }
-    }
 
     if design_only {
         println!("{}", "✅ 计划生成完成！".green());
@@ -104,56 +73,7 @@ async fn generate_new_plan(description: String, interactive: bool, design_only: 
     }
 }
 
-/// 生成计划，支持重试和 token 限制处理
-async fn generate_plan_with_retry(generator: &PlanGenerator, description: &str) -> Result<Plan> {
-    const MAX_RETRIES: usize = 2;
-    let mut use_compressed = false;
-
-    for attempt in 1..=MAX_RETRIES {
-        let result = if use_compressed {
-            generator.generate_plan_with_context_management(description, true).await
-        } else {
-            generator.generate_plan(description).await
-        };
-
-        match result {
-            Ok(plan) => {
-                // 保存计划
-                if let Ok(storage) = PlanStorage::new().await {
-                    let _ = storage.save_plan(&plan).await;
-                }
-                return Ok(plan);
-            }
-            Err(e) => {
-                let error_msg = e.to_string();
-
-                // 检查是否是 token 限制错误
-                if error_msg.contains("token") || error_msg.contains("length") || error_msg.contains("limit") || error_msg.contains("context") {
-                    println!("{} 上下文过长，正在使用压缩模式重试...", "⚠️".yellow());
-                    use_compressed = true;
-                    continue;
-                }
-
-                // 检查是否是 XML 解析错误
-                if error_msg.contains("XML") || error_msg.contains("xml") || error_msg.contains("解析") {
-                    if attempt == MAX_RETRIES {
-                        return Err(anyhow!("生成计划失败 (尝试 {} 次): XML 格式错误，请检查 LLM 配置", MAX_RETRIES));
-                    }
-                    println!("{} 第 {} 次尝试失败 (XML 格式错误)，正在重试...", "⚠️".yellow(), attempt);
-                    continue;
-                }
-
-                if attempt == MAX_RETRIES {
-                    return Err(anyhow!("生成计划失败 (尝试 {} 次): {}", MAX_RETRIES, e));
-                }
-
-                println!("{} 第 {} 次尝试失败，正在重试...", "⚠️".yellow(), attempt);
-            }
-        }
-    }
-
-    unreachable!()
-}
+// 旧的重试函数已完全移除 - 新架构中不再需要
 
 /// 显示计划内容
 fn display_plan(plan: &Plan) -> Result<()> {
@@ -824,21 +744,50 @@ async fn execute_refactor_code(
 /// 执行添加依赖操作
 async fn execute_add_dependency(name: &str, version: &Option<String>, dev: bool) -> Result<()> {
     let version_str = version.as_deref().unwrap_or("*");
-    let dep_type = if dev { "dev-dependencies" } else { "dependencies" };
 
-    // 这里应该解析和修改 Cargo.toml 文件
-    // 暂时只是打印信息
-    println!("  📦 添加依赖: {} = \"{}\" ({})", name, version_str, dep_type);
+    // 使用 cargo add 命令添加依赖
+    let mut cmd = tokio::process::Command::new("cargo");
+    cmd.arg("add").arg(name);
 
-    // TODO: 实际修改 Cargo.toml 文件
+    if let Some(v) = version {
+        cmd.arg("--version").arg(v);
+    }
+
+    if dev {
+        cmd.arg("--dev");
+    }
+
+    let output = cmd.output().await?;
+
+    if output.status.success() {
+        let dep_type = if dev { "开发依赖" } else { "依赖" };
+        println!("  📦 已添加{}: {} = \"{}\"", dep_type, name, version_str);
+    } else {
+        let error = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!("添加依赖失败: {}", error));
+    }
+
     Ok(())
 }
 
 /// 执行更新依赖操作
 async fn execute_update_dependency(name: &str, version: &str) -> Result<()> {
-    println!("  📦 更新依赖: {} -> {}", name, version);
+    // 使用 cargo add 命令更新依赖版本
+    let output = tokio::process::Command::new("cargo")
+        .arg("add")
+        .arg(name)
+        .arg("--version")
+        .arg(version)
+        .output()
+        .await?;
 
-    // TODO: 实际修改 Cargo.toml 文件
+    if output.status.success() {
+        println!("  📦 已更新依赖: {} -> {}", name, version);
+    } else {
+        let error = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!("更新依赖失败: {}", error));
+    }
+
     Ok(())
 }
 

@@ -1,6 +1,5 @@
 use super::{ProjectContext, ProjectStructure, FileContext};
-use crate::config;
-use crate::git;
+use crate::analyzers::{LanguageAnalyzerManager, Language, CodeStructure};
 
 use anyhow::Result;
 use ignore::WalkBuilder;
@@ -8,10 +7,11 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
-/// 项目分析器
+/// 项目分析器 - 增强版支持多语言
 pub struct ProjectAnalyzer {
     root_path: PathBuf,
     file_cache: HashMap<String, String>,
+    language_manager: LanguageAnalyzerManager,
 }
 
 impl ProjectAnalyzer {
@@ -21,9 +21,56 @@ impl ProjectAnalyzer {
         Ok(Self {
             root_path,
             file_cache: HashMap::new(),
+            language_manager: LanguageAnalyzerManager::new(),
         })
     }
     
+    /// 分析单个文件的语言特定信息
+    pub async fn analyze_file_language_specific(&self, file_path: &Path) -> Result<Option<CodeStructure>> {
+        if let Ok(content) = tokio::fs::read_to_string(file_path).await {
+            if let Some(analyzer) = self.language_manager.get_analyzer_for_file(file_path) {
+                match analyzer.analyze_file(file_path, &content) {
+                    Ok(structure) => Ok(Some(structure)),
+                    Err(_) => Ok(None), // 分析失败时返回 None
+                }
+            } else {
+                Ok(None) // 不支持的语言
+            }
+        } else {
+            Ok(None) // 文件读取失败
+        }
+    }
+
+    /// 检测项目主要语言
+    pub async fn detect_primary_language(&self) -> Result<Language> {
+        let mut language_counts: HashMap<Language, usize> = HashMap::new();
+
+        let walker = WalkBuilder::new(&self.root_path)
+            .hidden(false)
+            .git_ignore(true)
+            .build();
+
+        for result in walker {
+            if let Ok(entry) = result {
+                if entry.file_type().map_or(false, |ft| ft.is_file()) {
+                    if let Some(extension) = entry.path().extension().and_then(|e| e.to_str()) {
+                        let language = Language::from_extension(extension);
+                        if language != Language::Unknown {
+                            *language_counts.entry(language).or_insert(0) += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 返回文件数量最多的语言
+        Ok(language_counts
+            .into_iter()
+            .max_by_key(|(_, count)| *count)
+            .map(|(lang, _)| lang)
+            .unwrap_or(Language::Unknown))
+    }
+
     /// 分析整个代码库
     pub async fn analyze_codebase(&self) -> Result<ProjectContext> {
         // 1. 扫描项目结构

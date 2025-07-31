@@ -5,6 +5,8 @@ use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
+use tokio::time::sleep;
 
 // --- Data Structures (compatible with OpenAI/vLLM) ---
 #[derive(Serialize)]
@@ -89,6 +91,35 @@ impl LLMClient for OpenAIClient {
     }
 
     async fn call(&self, system_prompt: &str, user_prompt: &str) -> Result<String> {
+        self.call_with_retry(system_prompt, user_prompt, 3).await
+    }
+}
+
+impl OpenAIClient {
+    /// 带重试机制的 API 调用
+    async fn call_with_retry(&self, system_prompt: &str, user_prompt: &str, max_retries: usize) -> Result<String> {
+        let mut last_error = None;
+
+        for attempt in 1..=max_retries {
+            match self.make_api_call(system_prompt, user_prompt).await {
+                Ok(response) => return Ok(response),
+                Err(e) => {
+                    last_error = Some(e);
+
+                    if attempt < max_retries {
+                        let delay = Duration::from_secs(2_u64.pow(attempt as u32 - 1)); // 指数退避：1s, 2s, 4s
+                        eprintln!("⚠️  LLM 调用失败 (尝试 {}/{}), {}秒后重试...", attempt, max_retries, delay.as_secs());
+                        sleep(delay).await;
+                    }
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| anyhow!("所有重试都失败了")))
+    }
+
+    /// 执行单次 API 调用
+    async fn make_api_call(&self, system_prompt: &str, user_prompt: &str) -> Result<String> {
         let request_payload = OpenAIRequest {
             model: &self.model_name,
             messages: vec![
@@ -101,7 +132,7 @@ impl LLMClient for OpenAIClient {
                     content: user_prompt,
                 },
             ],
-            temperature: 0.7, // A slightly higher temperature might yield more creative results
+            temperature: 0.7,
         };
 
         let res = self
@@ -109,9 +140,18 @@ impl LLMClient for OpenAIClient {
             .post(&self.api_base)
             .bearer_auth(&self.api_key)
             .json(&request_payload)
+            .timeout(Duration::from_secs(120)) // 2分钟超时
             .send()
             .await
-            .map_err(|e| anyhow!("Failed to send request to OpenAI API: {}", e))?;
+            .map_err(|e| {
+                if e.is_timeout() {
+                    anyhow!("LLM API 调用超时 (120秒)")
+                } else if e.is_connect() {
+                    anyhow!("无法连接到 LLM API 服务器: {}", e)
+                } else {
+                    anyhow!("LLM API 请求失败: {}", e)
+                }
+            })?;
 
         let res_status = res.status();
 
@@ -119,23 +159,36 @@ impl LLMClient for OpenAIClient {
             let response = res
                 .json::<OpenAIResponse>()
                 .await
-                .map_err(|e| anyhow!("Failed to parse JSON response from OpenAI API: {}", e))?;
+                .map_err(|e| anyhow!("解析 LLM API 响应失败: {}", e))?;
 
             if let Some(first_choice) = response.choices.first() {
-                Ok(first_choice.message.content.trim().to_string())
+                let content = first_choice.message.content.trim();
+                if content.is_empty() {
+                    Err(anyhow!("LLM 返回了空响应"))
+                } else {
+                    Ok(content.to_string())
+                }
             } else {
-                Err(anyhow::anyhow!(
-                    "API call successful, but the 'choices' array was empty."
-                ))
+                Err(anyhow!("LLM API 响应中没有选择项"))
             }
         } else {
             let error_body = res
                 .text()
                 .await
-                .unwrap_or_else(|_| "Could not retrieve error body".to_string());
+                .unwrap_or_else(|_| "无法获取错误详情".to_string());
+
+            let error_msg = match res_status.as_u16() {
+                401 => "API 密钥无效或已过期",
+                403 => "API 访问被拒绝",
+                429 => "API 调用频率限制",
+                500..=599 => "LLM 服务器内部错误",
+                _ => "未知错误",
+            };
+
             Err(anyhow!(
-                "OpenAI compatible API call failed: {}\nResponse body: {}",
+                "LLM API 调用失败 ({}): {}\n详细信息: {}",
                 res_status,
+                error_msg,
                 error_body
             ))
         }
