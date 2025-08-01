@@ -17,6 +17,7 @@ futures = "0.3.31"
 ignore = "0.4.23"
 indicatif = "0.18.0"
 lazy_static = "1.5.0"
+md5 = "0.7.0"
 quick-xml = { version = "0.36.2", features = ["serialize"] }
 regex = "1.11.1"
 reqwest = { version = "0.12.22", features = ["json"] }

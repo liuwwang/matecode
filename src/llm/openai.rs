@@ -97,7 +97,12 @@ impl LLMClient for OpenAIClient {
 
 impl OpenAIClient {
     /// 带重试机制的 API 调用
-    async fn call_with_retry(&self, system_prompt: &str, user_prompt: &str, max_retries: usize) -> Result<String> {
+    async fn call_with_retry(
+        &self,
+        system_prompt: &str,
+        user_prompt: &str,
+        max_retries: usize,
+    ) -> Result<String> {
         let mut last_error = None;
 
         for attempt in 1..=max_retries {
@@ -108,7 +113,12 @@ impl OpenAIClient {
 
                     if attempt < max_retries {
                         let delay = Duration::from_secs(2_u64.pow(attempt as u32 - 1)); // 指数退避：1s, 2s, 4s
-                        eprintln!("⚠️  LLM 调用失败 (尝试 {}/{}), {}秒后重试...", attempt, max_retries, delay.as_secs());
+                        eprintln!(
+                            "⚠️  LLM 调用失败 (尝试 {}/{}), {}秒后重试...",
+                            attempt,
+                            max_retries,
+                            delay.as_secs()
+                        );
                         sleep(delay).await;
                     }
                 }

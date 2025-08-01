@@ -4,7 +4,6 @@ pub mod commit;
 pub mod init;
 pub mod install_hook;
 pub mod linter;
-pub mod plan;
 pub mod report;
 pub mod review;
 
@@ -84,29 +83,4 @@ pub enum Commands {
         from_staged: bool,
     },
 
-    /// AI生成开发计划
-    Plan {
-        /// 功能需求描述
-        description: String,
-
-        /// 交互式执行计划
-        #[arg(short, long)]
-        interactive: bool,
-
-        /// 只生成计划，不执行
-        #[arg(long)]
-        design_only: bool,
-
-        /// 查看计划状态
-        #[arg(long)]
-        status: bool,
-
-        /// 继续执行未完成的计划
-        #[arg(long)]
-        continue_plan: bool,
-
-        /// 使用智能生成器（实验性功能）
-        #[arg(long)]
-        smart: bool,
-    },
 }
