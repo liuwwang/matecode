@@ -3,7 +3,7 @@ use crate::config::get_prompt_template;
 use crate::history;
 use crate::llm::LLMClient;
 use anyhow::{Context, Result, anyhow};
-use chrono::{NaiveDate, Duration};
+use chrono::{Duration, NaiveDate};
 use colored::Colorize;
 use std::collections::BTreeMap;
 
@@ -69,11 +69,15 @@ fn parse_period(period: &str) -> Result<(NaiveDate, NaiveDate)> {
         _ => Err(anyhow!(
             "不支持的时间周期: {}。支持的周期: week/w, month/m, quarter/q, year/y, today/t",
             period
-        ))
+        )),
     }
 }
 
-pub async fn handler_report(since: Option<String>, until: Option<String>, period: Option<String>) -> Result<()> {
+pub async fn handler_report(
+    since: Option<String>,
+    until: Option<String>,
+    period: Option<String>,
+) -> Result<()> {
     let now = chrono::Local::now().date_naive();
 
     // 优先使用 period 参数，如果没有则使用 since/until

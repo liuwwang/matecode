@@ -1,4 +1,5 @@
 pub mod archive;
+pub mod branch;
 pub mod commit;
 pub mod init;
 pub mod install_hook;
@@ -67,4 +68,19 @@ pub enum Commands {
         #[arg(short, long)]
         lint: bool,
     },
+
+    /// AI生成分支名称
+    Branch {
+        /// 功能描述
+        description: String,
+
+        /// 直接创建并切换到新分支
+        #[arg(short, long)]
+        create: bool,
+
+        /// 基于当前暂存区变更生成分支名
+        #[arg(long)]
+        from_staged: bool,
+    },
+
 }

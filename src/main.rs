@@ -20,14 +20,21 @@ async fn main() -> Result<()> {
         commands::Commands::Commit { all, lint } => {
             commands::commit::handle_commit(all, lint).await?
         }
-        commands::Commands::Report { since, until, period } => {
-            commands::report::handler_report(since, until, period).await?
-        }
+        commands::Commands::Report {
+            since,
+            until,
+            period,
+        } => commands::report::handler_report(since, until, period).await?,
         commands::Commands::Review { lint } => commands::review::handle_review(lint).await?,
         commands::Commands::Archive => commands::archive::handle_archive().await?,
         commands::Commands::InstallHook => {
             commands::install_hook::install_post_commit_hook().await?
         }
+        commands::Commands::Branch {
+            description,
+            create,
+            from_staged,
+        } => commands::branch::handle_branch(description, create, from_staged).await?,
     }
 
     Ok(())

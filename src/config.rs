@@ -329,6 +329,12 @@ async fn create_default_prompts(prompts_dir: &Path) -> Result<()> {
         ("report.toml", get_report_prompt_template()),
         ("summarize.toml", get_summarize_prompt_template()),
         ("combine.toml", get_combine_prompt_template()),
+        ("branch.toml", get_generate_branch_prompt_template()),
+        ("plan_clarify.toml", get_plan_clarify_prompt_template()),
+        ("plan_clarify_specific.toml", get_plan_clarify_specific_prompt_template()),
+        ("plan_generate.toml", get_plan_generate_prompt_template()),
+        ("doc_generate.toml", get_doc_generate_prompt_template()),
+        ("diagram_generate.toml", get_diagram_generate_prompt_template()),
     ];
 
     for (filename, content) in prompt_templates {
@@ -573,6 +579,38 @@ feat(history): 引入提交历史归档与日报生成功能
 "#
 }
 
+fn get_generate_branch_prompt_template() -> &'static str {
+    r#"[system]
+你是我的 Git 分支命名专家。你的任务是根据我提供的功能描述，生成一个符合项目规范且清晰的分支名称。
+
+**重要：语言要求**
+{language_instruction}
+
+**分支命名规范:**
+- 使用 conventional commits 风格的前缀：feat/, fix/, docs/, style/, refactor/, test/, chore/
+- 使用小写字母和连字符分隔单词
+- 保持简洁但具有描述性
+- 避免使用特殊字符和空格
+
+**规则:**
+1. 你的回应**只能**包含被 `<branch_name>` 标签包裹的分支名称
+2. 不要有任何其他解释、说明或额外的文本
+
+[user]
+请根据以下功能描述生成合适的分支名称：
+
+功能描述: {description}
+
+{staged_context}
+
+请生成一个符合规范的分支名称。
+
+**示例:**
+功能描述: 修复支付页面按钮点击无响应的 bug
+输出: <branch_name>fix/payment-page-button-unresponsive</branch_name>
+"#
+}
+
 pub async fn get_prompt_template(name: &str) -> Result<String> {
     let config_dir = get_config_dir().await?;
     let prompt_path = config_dir.join("prompts").join(format!("{name}.toml"));
@@ -630,4 +668,202 @@ fn default_linters() -> HashMap<String, String> {
         "# (需要配置) e.g., clang-tidy **/*.cpp --".to_string(),
     );
     linters
+}
+
+fn get_plan_clarify_prompt_template() -> &'static str {
+    r#"[system]
+你是一位资深的产品经理和技术架构师。你的任务是通过苏格拉底式提问来澄清用户的模糊需求，帮助他们形成清晰、具体的需求描述。
+
+你需要：
+1. 深入理解用户的真实意图和业务目标
+2. 识别技术实现的关键决策点
+3. 发现可能的边界情况和约束条件
+4. 确保需求的完整性和可实现性
+
+请生成3-5个关键问题，每个问题都应该帮助澄清需求的重要方面。
+
+**重要：语言要求**
+{language_instruction}
+
+[user]
+用户提出的原始需求：{description}
+
+请生成一系列澄清问题，帮助深入理解这个需求。问题应该涵盖：
+- 业务目标和用户价值
+- 功能边界和约束条件
+- 技术实现的关键决策点
+- 与现有系统的集成方式
+- 性能和安全要求
+
+请以列表形式输出问题，每行一个问题，使用 "- " 开头。
+
+例如：
+- 这个功能的主要目标用户是谁？
+- 预期的并发用户数量是多少？
+- 是否需要与现有的认证系统集成？
+"#
+}
+
+fn get_plan_clarify_specific_prompt_template() -> &'static str {
+    r#"[system]
+你是一位技术专家。基于用户的需求描述，生成2-3个针对该特定需求的深度澄清问题。
+
+这些问题应该：
+1. 针对该需求的特定技术领域或业务场景
+2. 深入挖掘实现细节和边界条件
+3. 避免与通用问题重复
+
+**重要：语言要求**
+{language_instruction}
+
+[user]
+用户的具体需求：{description}
+
+请基于这个需求的特点，生成2-3个深度澄清问题。问题应该针对：
+- 该需求特有的技术挑战
+- 具体的实现方式选择
+- 特殊的业务规则或约束
+
+请以列表形式输出，每行一个问题，使用 "- " 开头。
+
+例如（针对"用户徽章系统"）：
+- 徽章是否支持等级制度？比如铜牌、银牌、金牌？
+- 徽章的展示位置有哪些？用户头像、个人主页、还是评论区？
+- 是否需要徽章的获取历史记录和统计功能？
+"#
+}
+
+fn get_plan_generate_prompt_template() -> &'static str {
+    r#"[system]
+你是一位经验丰富的技术架构师和项目经理。基于澄清后的需求信息，你需要生成一个详细的技术实施计划。
+
+计划应该包括：
+1. 清晰的技术方案描述
+2. 详细的任务分解
+3. 影响分析
+4. 实施建议
+
+**重要：语言要求**
+{language_instruction}
+
+[user]
+**原始需求**: {original_description}
+
+**澄清后的需求信息**:
+{clarified_requirements}
+
+请基于以上信息生成一个详细的技术实施计划。计划应该包括：
+
+## 技术方案
+描述整体的技术实现方案和架构设计
+
+## 任务分解
+将实施过程分解为具体的任务，每个任务应该包括：
+- 任务标题
+- 详细描述
+- 预估工时
+- 涉及的文件或模块
+- 依赖关系
+
+## 影响分析
+分析这个需求对现有系统可能产生的影响
+
+## 实施建议
+提供实施过程中的注意事项和建议
+
+请使用结构化的格式输出，便于后续解析和处理。
+"#
+}
+
+fn get_doc_generate_prompt_template() -> &'static str {
+    r#"[system]
+你是一位技术文档专家。你需要基于提供的计划和代码分析结果，生成一份高质量的技术文档。
+
+文档应该：
+1. 结构清晰，逻辑性强
+2. 包含必要的技术细节
+3. 便于开发者理解和实施
+4. 包含代码示例和最佳实践
+
+**重要：语言要求**
+{language_instruction}
+
+[user]
+请基于以下信息生成技术文档：
+
+{context}
+
+请生成一份包含以下章节的技术文档：
+
+## 概述
+简要描述功能目标和价值
+
+## 技术方案
+详细说明技术实现方案
+
+## 系统架构
+描述系统的整体架构和组件关系
+
+## 核心业务流程
+说明主要的业务流程和数据流
+
+## 关键实现细节
+重要的技术实现细节和注意事项
+
+## 数据结构设计
+相关的数据结构和接口设计
+
+## 测试策略
+测试方案和验收标准
+
+## 部署和运维
+部署流程和运维注意事项
+
+请确保文档内容详实、准确，并包含必要的代码示例。
+"#
+}
+
+fn get_diagram_generate_prompt_template() -> &'static str {
+    r#"[system]
+你是一位系统架构师和流程设计专家。你需要基于提供的上下文信息，生成相应的Mermaid图表代码。
+
+你可以生成以下类型的图表：
+1. 流程图 (flowchart) - 展示业务流程或算法流程
+2. 时序图 (sequenceDiagram) - 展示组件间的交互时序
+3. 类图 (classDiagram) - 展示类的结构和关系
+4. 组件图 - 展示系统组件和依赖关系
+
+**重要：语言要求**
+{language_instruction}
+
+[user]
+请基于以下上下文信息生成合适的Mermaid图表：
+
+{context}
+
+请生成1-3个最能说明系统设计的图表。每个图表应该：
+1. 有清晰的标题
+2. 使用正确的Mermaid语法
+3. 包含必要的说明
+
+请使用以下格式输出：
+
+## 图表标题
+```mermaid
+图表代码
+```
+
+例如：
+
+## 用户认证流程
+```mermaid
+flowchart TD
+    A[用户登录] --> B{验证凭据}
+    B -->|成功| C[生成Token]
+    B -->|失败| D[返回错误]
+    C --> E[返回成功响应]
+```
+
+请确保图表语法正确，能够正常渲染。
+"#
 }
