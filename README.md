@@ -1,5 +1,7 @@
 # matecode
 
+!!! 这是一个个人用作辅助编码工作的工具，如果有问题可以提出来一起讨论.
+
 一个基于 AI 的代码管理工具，支持自动生成提交信息、代码审查和工作报告。
 
 [![Rust CI](https://github.com/liuwwang/matecode/actions/workflows/ci.yml/badge.svg)](https://github.com/liuwwang/matecode/actions/workflows/ci.yml)
