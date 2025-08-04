@@ -30,6 +30,7 @@ pub enum Commands {
     InstallHook,
 
     /// AI生成暂存空间内的git commit 信息并commit
+    #[command(alias = "c")]
     Commit {
         /// 自动暂存所有已跟踪的文件修改，等同于`git add -u`操作
         #[arg(short, long)]
@@ -41,6 +42,7 @@ pub enum Commands {
     },
 
     /// AI生成工作报告,支持指定起始日期或预定义周期
+    #[command(alias = "r")]
     Report {
         /// 开始时间
         #[arg(short, long)]
@@ -63,6 +65,7 @@ pub enum Commands {
     },
 
     /// 辅助你完成review代码
+    #[command(alias = "rev")]
     Review {
         /// 启用lint
         #[arg(short, long)]
@@ -70,6 +73,7 @@ pub enum Commands {
     },
 
     /// AI生成分支名称
+    #[command(alias = "b")]
     Branch {
         /// 功能描述
         description: String,
@@ -82,5 +86,4 @@ pub enum Commands {
         #[arg(long)]
         from_staged: bool,
     },
-
 }

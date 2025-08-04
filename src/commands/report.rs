@@ -2,7 +2,7 @@ use crate::config;
 use crate::config::get_prompt_template;
 use crate::history;
 use crate::llm::LLMClient;
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use chrono::{Duration, NaiveDate};
 use colored::Colorize;
 use std::collections::BTreeMap;
@@ -44,22 +44,22 @@ fn parse_period(period: &str) -> Result<(NaiveDate, NaiveDate)> {
     match period.to_lowercase().as_str() {
         "week" | "w" => {
             // 最近一周
-            let start_date = now - Duration::days(7);
+            let start_date = now - Duration::days(6); // 包含今天，所以是6天前
             Ok((start_date, now))
         }
         "month" | "m" => {
             // 最近一个月
-            let start_date = now - Duration::days(30);
+            let start_date = now - Duration::days(29);
             Ok((start_date, now))
         }
         "quarter" | "q" => {
             // 最近一个季度
-            let start_date = now - Duration::days(90);
+            let start_date = now - Duration::days(89);
             Ok((start_date, now))
         }
         "year" | "y" => {
             // 最近一年
-            let start_date = now - Duration::days(365);
+            let start_date = now - Duration::days(364);
             Ok((start_date, now))
         }
         "today" | "t" => {
@@ -107,9 +107,14 @@ pub async fn handler_report(
     }
 
     let llm_client = config::get_llm_client().await?;
-    let report =
+    let summary =
         generate_report_from_commits(llm_client.as_client(), &all_commits, start_date, end_date)
             .await?;
-    println!("{report}");
+    
+    // 使用硬编码的模板包装 AI 返回的核心内容
+    println!("# 工作总结 ({} - {})\n", start_date.format("%Y年%m月%d日"), end_date.format("%Y年%m月%d日"));
+    println!("{}", summary);
+    println!("\n---\n*由 matecode 自动生成*");
+
     Ok(())
 }

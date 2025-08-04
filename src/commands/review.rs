@@ -1,12 +1,13 @@
 use crate::commands::linter::handle_linter;
 use crate::config;
 use crate::config::get_prompt_template;
-use crate::git::{DiffChunk, ProjectContext, get_staged_diff};
-use crate::llm::{LLMClient, parse_prompt_template};
-use anyhow::{Context, Result, anyhow};
+use crate::git::{get_staged_diff, DiffChunk, ProjectContext};
+use crate::llm::{parse_prompt_template, LLMClient};
+use anyhow::{anyhow, Context, Result};
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::time::Duration;
+use termimad::MadSkin;
 use tokio::time;
 
 fn build_review_user_prompt(
@@ -44,7 +45,8 @@ async fn generate_code_review(
 
     // 创建进度条
     let progress_bar = ProgressBar::new(analysis.context.affected_files.len() as u64);
-    progress_bar.set_style(ProgressStyle::default_bar()
+    progress_bar
+        .set_style(ProgressStyle::default_bar()
         .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} 正在审查: {msg}")
         .unwrap()
         .progress_chars("#>-"));
@@ -104,9 +106,11 @@ pub async fn handle_review(lint: bool) -> Result<()> {
     let review =
         generate_code_review(llm_client.as_client(), &diff, lint_result.as_deref()).await?;
 
+    let skin = MadSkin::default();
+
     println!("\n{}\n", "=".repeat(60));
-    println!("📝 AI 代码审查报告:");
-    println!("{}\n", "=".repeat(60));
-    println!("{}", review);
+    skin.print_text(&review);
+    println!("\n{}\n", "=".repeat(60));
+
     Ok(())
 }
