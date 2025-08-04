@@ -17,8 +17,8 @@ async fn main() -> Result<()> {
         commands::Commands::Lint { detail } => {
             commands::linter::handle_linter(detail).await?;
         }
-        commands::Commands::Commit { all, lint } => {
-            commands::commit::handle_commit(all, lint).await?
+        commands::Commands::Commit { all, lint, structured } => {
+            commands::commit::handle_commit(all, lint, structured).await?
         }
         commands::Commands::Report {
             since,

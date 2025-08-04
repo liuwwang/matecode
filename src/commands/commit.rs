@@ -1,4 +1,4 @@
-use crate::commands::install_hook::{HookStatus, check_hook_status, install_post_commit_hook};
+use crate::commands::install_hook::{check_hook_status, install_post_commit_hook, HookStatus};
 use crate::commands::linter::{handle_linter, parse_linter_summary};
 use crate::config;
 use crate::git;
@@ -6,19 +6,55 @@ use crate::llm::generate_commit_message;
 use anyhow;
 use anyhow::Context;
 use colored::Colorize;
-use dialoguer::{Confirm, Input, Select, theme::ColorfulTheme};
+use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
 
-pub async fn handle_commit(all: bool, lint: bool) -> anyhow::Result<()> {
-    // 检查是否是一个git仓库
+async fn prompt_for_metadata() -> anyhow::Result<String> {
+    let mut footer = String::new();
+
+    let issue: String = Input::with_theme(&ColorfulTheme::default())
+        .with_prompt("关联的 Issue ID 是什么？(选填, e.g., PROJ-123)")
+        .allow_empty(true)
+        .interact_text()?;
+
+    if !issue.trim().is_empty() {
+        footer.push_str(&format!("\nIssue: {}", issue.trim()));
+    }
+
+    let risk_levels = &["low", "medium", "high"];
+    let risk_selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("这次变更的风险等级是？")
+        .items(risk_levels)
+        .default(0)
+        .interact()?;
+
+    footer.push_str(&format!("\nRisk-Level: {}", risk_levels[risk_selection]));
+
+    if Confirm::with_theme(&ColorfulTheme::default())
+        .with_prompt("这是否是一个破坏性变更 (Breaking Change)？")
+        .default(false)
+        .interact()?
+    {
+        let breaking_change_description: String = Input::with_theme(&ColorfulTheme::default())
+            .with_prompt("请简要描述这个破坏性变更:")
+            .allow_empty(false)
+            .interact_text()?;
+        footer.push_str(&format!(
+            "\n\nBREAKING CHANGE: {}",
+            breaking_change_description
+        ));
+    }
+
+    Ok(footer)
+}
+
+pub async fn handle_commit(all: bool, lint: bool, structured: bool) -> anyhow::Result<()> {
     if !git::check_is_git_repo().await {
         eprintln!("{}", "错误: 当前目录不是一个有效的 Git 仓库。".red());
         return Ok(());
     }
 
-    // 是否启用代码审查
     if lint {
         println!("{}", "(--lint) 提交前运行linter...".bold());
-
         let lint_result = handle_linter(false).await?;
         if let Some(output) = lint_result {
             if parse_linter_summary(&output).is_some() {
@@ -45,7 +81,6 @@ pub async fn handle_commit(all: bool, lint: bool) -> anyhow::Result<()> {
                 install_post_commit_hook().await?;
             } else {
                 println!("好的，已跳过安装。您可以随时手动运行 `matecode install-hook`。");
-
             }
         }
         HookStatus::InstalledByOther => {
@@ -62,7 +97,6 @@ pub async fn handle_commit(all: bool, lint: bool) -> anyhow::Result<()> {
         HookStatus::InstalledByUs => {}
     }
 
-    // 处理 git add -u
     if all {
         git::run_git_command(&["add", "-u"])
             .await
@@ -78,23 +112,20 @@ pub async fn handle_commit(all: bool, lint: bool) -> anyhow::Result<()> {
         }
     }
 
-    let mut should_bread_loop = false;
+    let diff = git::get_staged_diff()
+        .await
+        .context("无法获取暂存的git diff")?;
+
+    if diff.is_empty() {
+        println!("{}", "没有发现暂存的修改.".green());
+        return Ok(());
+    }
+
+    let llm_client = config::get_llm_client().await?;
+    let mut commit_message = generate_commit_message(llm_client.as_client(), &diff).await?;
+    commit_message = commit_message.replace('`', "'");
 
     loop {
-        let diff = git::get_staged_diff()
-            .await
-            .context("无法获取暂存的git diff")?;
-
-        if diff.is_empty() {
-            println!("{}", "没有发现暂存的修改.".green());
-            return Ok(());
-        }
-
-        let llm_client = config::get_llm_client().await?;
-
-        let mut commit_message = generate_commit_message(llm_client.as_client(), &diff).await?;
-        commit_message = commit_message.replace('`', "'");
-
         println!("\n{}\n", "=".repeat(60));
         println!("{}", commit_message.cyan());
         println!("{}\n", "=".repeat(60));
@@ -109,19 +140,28 @@ pub async fn handle_commit(all: bool, lint: bool) -> anyhow::Result<()> {
 
         match selection {
             0 => {
-                // 直接提交
-                git::run_git_command(&["commit", "-m", &commit_message])
+                let mut final_commit_message = commit_message;
+                if structured {
+                    let metadata_footer = prompt_for_metadata().await?;
+                    if !metadata_footer.is_empty() {
+                        final_commit_message.push_str("\n");
+                        final_commit_message.push_str(&metadata_footer);
+                    }
+                }
+                git::run_git_command(&["commit", "-m", &final_commit_message])
                     .await
                     .context("无法执行 git commit。")?;
                 println!("🚀 提交成功！");
                 break;
             }
             1 => {
-                // 重新生成
                 println!("🔄 好的，正在为您重新生成...");
+                commit_message = generate_commit_message(llm_client.as_client(), &diff).await?;
+                commit_message = commit_message.replace('`', "'");
                 continue;
             }
             2 => {
+                let mut message_for_improvement = commit_message.clone();
                 loop {
                     let user_feedback: String = Input::with_theme(&ColorfulTheme::default())
                         .with_prompt("💬 请告诉我您希望如何改进这条提交信息")
@@ -130,17 +170,13 @@ pub async fn handle_commit(all: bool, lint: bool) -> anyhow::Result<()> {
 
                     if user_feedback.trim().is_empty() {
                         println!("未输入任何反馈，返回选择菜单。");
-                        println!("未输入任何反馈，返回选择菜单。");
                         break;
                     }
 
                     println!("🤖 正在根据您的反馈改进提交信息...");
-
-                    // 构建改进提示
-                    // 改进意见应该也参考之前的提交信息，不能只针对commit_message，不然捕捉不到细节
                     let improvement_prompt = format!(
                         "用户对以下提交信息有改进建议：\n\n当前提交信息：\n{}\n\n用户反馈：\n{}\n\n代码变更内容：\n{}\n\n请根据用户的反馈和代码变更内容改进提交信息，保持简洁明了，符合conventional commits格式。只返回改进后的提交信息，不要添加额外的解释。",
-                        commit_message, user_feedback, diff
+                        message_for_improvement, user_feedback, diff
                     );
 
                     match llm_client
@@ -152,44 +188,36 @@ pub async fn handle_commit(all: bool, lint: bool) -> anyhow::Result<()> {
                         .await
                     {
                         Ok(improved_message) => {
-                            let improved_message =
+                            let final_improved_message =
                                 improved_message.replace('`', "'").trim().to_string();
 
                             println!("\n{}", "=".repeat(60));
                             println!("{}", "改进后的提交信息:".green());
-                            println!("{}", improved_message.cyan());
+                            println!("{}", final_improved_message.cyan());
                             println!("{}", "=".repeat(60));
 
                             let feedback_options =
-                                &["✅ 使用改进后的版本", "🔄 继续改进", "↩️ 返回原始版本"];
-
-                            let feedback_selection = Select::with_theme(&ColorfulTheme::default())
-                                .with_prompt("您对改进后的提交信息满意吗？")
-                                .items(&feedback_options[..])
-                                .default(0)
-                                .interact()?;
+                                &["✅ 使用改进后的版本", "🔄 继续改进", "↩️ 放弃本次改进"];
+                            let feedback_selection =
+                                Select::with_theme(&ColorfulTheme::default())
+                                    .with_prompt("您对改进后的提交信息满意吗？")
+                                    .items(&feedback_options[..])
+                                    .default(0)
+                                    .interact()?;
 
                             match feedback_selection {
                                 0 => {
-                                    // 使用改进后的版本
-                                    commit_message = improved_message;
-                                    let _ = format!("Value: {}", commit_message);
-                                    println!(
-                                        "✨ 已采用改进后的提交信息: {}",
-                                        commit_message.cyan()
-                                    );
-                                    should_bread_loop = true; // Set flag
+                                    commit_message = final_improved_message;
+                                    println!("✨ 已采用改进后的提交信息，返回主菜单。");
                                     break;
                                 }
                                 1 => {
-                                    // 继续改进
-                                    commit_message = improved_message;
+                                    message_for_improvement = final_improved_message;
                                     println!("🔄 好的，请继续告诉我您的改进建议：");
-                                    continue; // Continues inner loop
+                                    continue;
                                 }
                                 2 => {
-                                    // 返回原始版本
-                                    println!("↩️ 已返回原始提交信息。");
+                                    println!("↩️ 已放弃本次改进，返回主菜单。");
                                     break;
                                 }
                                 _ => unreachable!(),
@@ -197,10 +225,8 @@ pub async fn handle_commit(all: bool, lint: bool) -> anyhow::Result<()> {
                         }
                         Err(e) => {
                             println!("❌ 改进提交信息时出错: {}", e);
-                            println!("您可以继续尝试或返回选择菜单。");
-
                             if !Confirm::with_theme(&ColorfulTheme::default())
-                                .with_prompt("是否继续尝试改进？")
+                                .with_prompt("是否重试？")
                                 .default(false)
                                 .interact()?
                             {
@@ -209,11 +235,9 @@ pub async fn handle_commit(all: bool, lint: bool) -> anyhow::Result<()> {
                         }
                     }
                 }
-
-                if should_bread_loop { break } else { continue }
+                continue;
             }
             3 => {
-                // 退出
                 println!("好的，操作已取消。");
                 break;
             }
