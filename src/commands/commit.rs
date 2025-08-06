@@ -1,5 +1,5 @@
 use crate::commands::install_hook::{check_hook_status, install_post_commit_hook, HookStatus};
-use crate::commands::linter::{handle_linter, parse_linter_summary};
+use crate::commands::linter::handle_linter;
 use crate::config;
 use crate::git;
 use crate::llm::generate_commit_message;
@@ -47,7 +47,12 @@ async fn prompt_for_metadata() -> anyhow::Result<String> {
     Ok(footer)
 }
 
-pub async fn handle_commit(all: bool, lint: bool, structured: bool) -> anyhow::Result<()> {
+pub async fn handle_commit(
+    all: bool,
+    lint: bool,
+    structured: bool,
+    no_edit: bool,
+) -> anyhow::Result<()> {
     if !git::check_is_git_repo().await {
         eprintln!("{}", "错误: 当前目录不是一个有效的 Git 仓库。".red());
         return Ok(());
@@ -55,46 +60,46 @@ pub async fn handle_commit(all: bool, lint: bool, structured: bool) -> anyhow::R
 
     if lint {
         println!("{}", "(--lint) 提交前运行linter...".bold());
-        let lint_result = handle_linter(false).await?;
-        if let Some(output) = lint_result {
-            if parse_linter_summary(&output).is_some() {
-                if !Confirm::with_theme(&ColorfulTheme::default())
+        if let Some(_output) = handle_linter(false, false).await? {
+            if !no_edit
+                && !Confirm::with_theme(&ColorfulTheme::default())
                     .with_prompt("Lint 检查发现问题。确定还要提交吗")
                     .default(false)
                     .interact()?
-                {
-                    println!("提交已取消.");
-                    return Ok(());
-                }
+            {
+                println!("提交已取消.");
+                return Ok(());
             }
         }
         println!("{}", "-".repeat(60));
     }
 
-    match check_hook_status().await? {
-        HookStatus::NotInstalled => {
-            if Confirm::with_theme(&ColorfulTheme::default())
-                .with_prompt("检测到您尚未安装 matecode 的 post-commit 钩子，它能帮助自动记录提交历史以生成报告。是否立即为您安装？")
-                .default(true)
-                .interact()?
-            {
-                install_post_commit_hook().await?;
-            } else {
-                println!("好的，已跳过安装。您可以随时手动运行 `matecode install-hook`。");
+    if !no_edit {
+        match check_hook_status().await? {
+            HookStatus::NotInstalled => {
+                if Confirm::with_theme(&ColorfulTheme::default())
+                    .with_prompt("检测到您尚未安装 matecode 的 post-commit 钩子，它能帮助自动记录提交历史以生成报告。是否立即为您安装？")
+                    .default(true)
+                    .interact()?
+                {
+                    install_post_commit_hook().await?;
+                } else {
+                    println!("好的，已跳过安装。您可以随时手动运行 `matecode install-hook`。");
+                }
             }
-        }
-        HookStatus::InstalledByOther => {
-            if Confirm::with_theme(&ColorfulTheme::default())
-                .with_prompt("检测到已存在一个自定义的 post-commit 钩子。是否要将 `matecode archive` 命令添加到现有钩子中？")
-                .default(true)
-                .interact()?
-            {
-                install_post_commit_hook().await?;
-            } else {
-                println!("{}", "警告: 为确保 matecode 的报告功能正常工作，请将 `matecode archive` 命令手动添加到您现有的钩子脚本中。".yellow());
+            HookStatus::InstalledByOther => {
+                if Confirm::with_theme(&ColorfulTheme::default())
+                    .with_prompt("检测到已存在一个自定义的 post-commit 钩子。是否要将 `matecode archive` 命令添加到现有钩子中？")
+                    .default(true)
+                    .interact()?
+                {
+                    install_post_commit_hook().await?;
+                } else {
+                    println!("{}", "警告: 为确保 matecode 的报告功能正常工作，请将 `matecode archive` 命令手动添加到您现有的钩子脚本中。".yellow());
+                }
             }
+            HookStatus::InstalledByUs => {}
         }
-        HookStatus::InstalledByUs => {}
     }
 
     if all {
@@ -124,6 +129,16 @@ pub async fn handle_commit(all: bool, lint: bool, structured: bool) -> anyhow::R
     let llm_client = config::get_llm_client().await?;
     let mut commit_message = generate_commit_message(llm_client.as_client(), &diff).await?;
     commit_message = commit_message.replace('`', "'");
+
+    // If in non-interactive mode (for tests), commit directly and exit.
+    if no_edit {
+        println!("{}", commit_message.cyan());
+        git::run_git_command(&["commit", "-m", &commit_message])
+            .await
+            .context("无法执行 git commit。")?;
+        println!("🚀 提交成功！");
+        return Ok(());
+    }
 
     loop {
         println!("\n{}\n", "=".repeat(60));

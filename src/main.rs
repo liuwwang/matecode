@@ -14,18 +14,23 @@ async fn main() -> Result<()> {
 
     match cli.command {
         commands::Commands::Init => commands::init::handle_init().await?,
-        commands::Commands::Lint { detail } => {
-            commands::linter::handle_linter(detail).await?;
+        commands::Commands::Lint { format, ai_enhance } => {
+            commands::linter::handle_linter(format, ai_enhance).await?;
         }
-        commands::Commands::Commit { all, lint, structured } => {
-            commands::commit::handle_commit(all, lint, structured).await?
-        }
+        commands::Commands::Commit {
+            all,
+            lint,
+            structured,
+            no_edit,
+        } => commands::commit::handle_commit(all, lint, structured, no_edit).await?,
         commands::Commands::Report {
             since,
             until,
             period,
         } => commands::report::handler_report(since, until, period).await?,
-        commands::Commands::Review { lint } => commands::review::handle_review(lint).await?,
+        commands::Commands::Review { lint } => {
+            commands::review::handle_review(lint).await?
+        }
         commands::Commands::Archive => commands::archive::handle_archive().await?,
         commands::Commands::InstallHook => {
             commands::install_hook::install_post_commit_hook().await?

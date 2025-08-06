@@ -43,6 +43,10 @@ pub enum Commands {
         /// 启用结构化提交模式，以交互方式添加元数据
         #[arg(short, long)]
         structured: bool,
+
+        /// [测试用] 禁用交互式编辑
+        #[arg(long, hide = true)]
+        no_edit: bool,
     },
 
     /// AI生成工作报告,支持指定起始日期或预定义周期
@@ -63,16 +67,20 @@ pub enum Commands {
 
     /// 进行代码风格检查
     Lint {
-        /// 显示详情
-        #[arg(short, long)]
-        detail: bool,
+        /// 将 linter 输出格式化为 SARIF
+        #[arg(long)]
+        format: bool,
+
+        /// [需要 --format] 使用 AI 增强 SARIF 输出
+        #[arg(long)]
+        ai_enhance: bool,
     },
 
     /// 辅助你完成review代码
     #[command(alias = "rev")]
     Review {
-        /// 启用lint
-        #[arg(short, long)]
+        /// 在审查前运行 lint 并将结果作为附加上下文
+        #[arg(long)]
         lint: bool,
     },
 

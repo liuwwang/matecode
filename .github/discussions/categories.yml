@@ -1,0 +1,33 @@
+# GitHub Discussions 分类配置
+# 这个文件定义了讨论区的分类结构
+
+categories:
+  - name: "💡 功能请求"
+    description: "提出新功能建议和改进想法"
+    emoji: "💡"
+    color: "0E8A16"
+    
+  - name: "🐛 Bug 报告"
+    description: "报告问题和错误"
+    emoji: "🐛"
+    color: "D93F34"
+    
+  - name: "❓ 使用问题"
+    description: "寻求帮助和解答疑问"
+    emoji: "❓"
+    color: "0075CA"
+    
+  - name: "💬 经验分享"
+    description: "分享使用经验和最佳实践"
+    emoji: "💬"
+    color: "A2EEEF"
+    
+  - name: "🔧 技术讨论"
+    description: "深入讨论技术实现和架构"
+    emoji: "🔧"
+    color: "FEF2C0"
+    
+  - name: "📢 公告"
+    description: "项目重要更新和公告"
+    emoji: "📢"
+    color: "D4C5F9" 
