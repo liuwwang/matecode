@@ -69,9 +69,9 @@ pub enum Commands {
     Lint {
         /// 将 linter 输出格式化为 SARIF
         #[arg(long)]
-        format: bool,
+        sarif: bool,
 
-        /// [需要 --format] 使用 AI 增强 SARIF 输出
+        /// [需要 --sarif] 使用 AI 增强 SARIF 输出
         #[arg(long)]
         ai_enhance: bool,
     },

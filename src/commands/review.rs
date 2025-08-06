@@ -2,7 +2,7 @@
 
 use crate::commands::linter;
 use crate::config;
-use crate::git::{get_staged_diff, analyze_diff};
+use crate::git::{analyze_diff, get_staged_diff};
 use crate::llm::{parse_prompt_template, LLMClient};
 use anyhow::{anyhow, Context, Result};
 use colored::Colorize;
@@ -24,7 +24,7 @@ pub async fn handle_review(lint: bool) -> Result<()> {
     let lint_result = if lint {
         println!("{}", "(--lint) 审查前运行 linter...".bold());
         // We pass `false` for `format_sarif` and `ai_enhance` to get the plain text output.
-        let result = linter::handle_linter(false, false).await?;
+        let result = linter::handle_linter(false, false, None).await?;
         println!("{}", "-".repeat(60));
         result
     } else {
@@ -59,7 +59,7 @@ async fn generate_diff_code_review(
     if analysis.needs_chunking {
         return Err(anyhow!("代码变更过大，暂不支持分块审查。"));
     }
-    
+
     let progress_bar = ProgressBar::new_spinner();
     progress_bar.set_style(
         ProgressStyle::default_spinner()
@@ -68,8 +68,7 @@ async fn generate_diff_code_review(
     );
     progress_bar.enable_steady_tick(std::time::Duration::from_millis(100));
 
-    let user_prompt = user_prompt
-        .replace("{diff_content}", &analysis.chunks[0].content);
+    let user_prompt = user_prompt.replace("{diff_content}", &analysis.chunks[0].content);
 
     let final_prompt = if let Some(lint) = lint_result {
         if !lint.trim().is_empty() {

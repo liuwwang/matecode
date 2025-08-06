@@ -60,7 +60,7 @@ pub async fn handle_commit(
 
     if lint {
         println!("{}", "(--lint) 提交前运行linter...".bold());
-        if let Some(_output) = handle_linter(false, false).await? {
+        if let Some(_output) = handle_linter(false, false, None).await? {
             if !no_edit
                 && !Confirm::with_theme(&ColorfulTheme::default())
                     .with_prompt("Lint 检查发现问题。确定还要提交吗")

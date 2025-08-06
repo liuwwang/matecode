@@ -2,7 +2,6 @@
 
 use assert_cmd::prelude::*;
 use predicates::prelude::*;
-use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -44,7 +43,7 @@ impl TestRepo {
             models = {{ "gpt-3.5-turbo" = {{ max_tokens = 4096, max_output_tokens = 1024, reserved_tokens = 500 }} }}
 
             [lint]
-            rust = "cargo clippy"
+            rust = "cargo clippy --message-format=json"
         "#, mock_server_url);
         
         fs::write(config_path, test_config_content)
@@ -202,6 +201,19 @@ async fn test_lint_command_sarif_ai_enhanced() {
     let mock = mock_openai_api(&mut server, mock_sarif_run);
 
     let repo = TestRepo::new().with_git().with_config(&server.url());
+
+    // Create a minimal Cargo.toml to make it a valid Rust project for clippy
+    let cargo_toml_content = r#"
+        [package]
+        name = "test-crate"
+        version = "0.1.0"
+        edition = "2021"
+
+        [lib]
+        path = "src/lib.rs"
+    "#;
+    fs::write(repo.path().join("Cargo.toml"), cargo_toml_content).unwrap();
+
     create_and_stage_file(repo.path(), "src/lib.rs", "pub fn a() -> bool { if true { return true } else { return false } }");
 
     let mut cmd = repo.matecode();
