@@ -42,8 +42,6 @@ impl TestRepo {
             default_model = "gpt-3.5-turbo"
             models = {{ "gpt-3.5-turbo" = {{ max_tokens = 4096, max_output_tokens = 1024, reserved_tokens = 500 }} }}
 
-            [lint]
-            rust = "cargo clippy --message-format=json"
         "#, mock_server_url);
         
         fs::write(config_path, test_config_content)

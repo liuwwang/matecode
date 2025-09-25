@@ -49,18 +49,12 @@ async fn prompt_for_metadata() -> anyhow::Result<String> {
 
 pub async fn handle_commit(
     all: bool,
-    lint: bool,
     structured: bool,
     no_edit: bool,
 ) -> anyhow::Result<()> {
     if !git::check_is_git_repo().await {
         eprintln!("{}", "错误: 当前目录不是一个有效的 Git 仓库。".red());
         return Ok(());
-    }
-
-    if lint {
-        println!("{}", "提交前Lint功能已被移除".bold());
-        println!("{}", "-".repeat(60));
     }
 
     if !no_edit {

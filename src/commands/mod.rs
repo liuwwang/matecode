@@ -34,10 +34,6 @@ pub enum Commands {
         #[arg(short, long)]
         all: bool,
 
-        /// 提交前运行lint
-        #[arg(long)]
-        lint: bool,
-
         /// 启用结构化提交模式，以交互方式添加元数据
         #[arg(short, long)]
         structured: bool,

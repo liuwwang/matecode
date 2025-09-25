@@ -56,10 +56,10 @@ matecode commit
 # 别名: matecode c
 ```
 
-如果您想让工具自动暂存文件的变更，可以使用 `-a` 或 `--all` 参数。这个参数的行为类似于 `git add -u`。您也可以在提交前自动运行 linter：
+如果您想让工具自动暂存文件的变更，可以使用 `-a` 或 `--all` 参数。这个参数的行为类似于 `git add -u`：
 
 ```bash
-matecode commit --all --lint
+matecode commit --all
 ```
 
 **重要提示**: `-a` 参数只会暂存**已被 Git 跟踪**的文件的**修改**和**删除**。它**不会**暂存您新建的、尚未被跟踪的文件（untracked files）。

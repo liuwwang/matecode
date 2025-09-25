@@ -46,9 +46,6 @@ pub struct Config {
     pub language: String,
     /// LLM provider settings.
     pub llm: LLMProviders,
-    /// Linter commands for different languages.
-    #[serde(default = "default_linters")]
-    pub lint: HashMap<String, String>,
 }
 
 /// Defines the context window configuration for different models.
@@ -142,7 +139,6 @@ pub async fn create_default_config() -> Result<()> {
                     proxy: None,
                 }),
             },
-            lint: default_linters(),
         };
 
         let config_content = toml::to_string_pretty(&default_config)?;
@@ -340,7 +336,6 @@ async fn create_default_prompts(prompts_dir: &Path) -> Result<()> {
             "diagram_generate.toml",
             get_diagram_generate_prompt_template(),
         ),
-        ("review_sarif.toml", get_review_sarif_prompt_template()),
     ];
 
     for (filename, content) in prompt_templates {
@@ -435,7 +430,6 @@ fn get_review_prompt_template() -> &'static str {
 2. **代码可读性与可维护性**: 命名、复杂度、代码结构等。
 3. **更优的实践**: 有没有更简洁、更安全或更高效的写法？
 
-<lint_results></lint_results>
 
 ```diff
 {diff_content}
@@ -630,35 +624,6 @@ fn get_language_instruction(language: &str) -> String {
     }
 }
 
-fn default_linters() -> HashMap<String, String> {
-    let mut linters = HashMap::new();
-    linters.insert(
-        "rust".to_string(),
-        "cargo clippy -- -D warnings".to_string(),
-    );
-    linters.insert(
-        "python".to_string(),
-        "ruff check . --output-format sarif".to_string(),
-    );
-    linters.insert(
-        "javascript".to_string(),
-        "npx eslint . --format sarif -o eslint-report.sarif && cat eslint-report.sarif".to_string(),
-    );
-    linters.insert(
-        "typescript".to_string(),
-        "npx eslint . --format sarif -o eslint-report.sarif && cat eslint-report.sarif".to_string(),
-    );
-    linters.insert("go".to_string(), "go vet ./...".to_string());
-    linters.insert(
-        "java".to_string(),
-        "# (需要配置) e.g., checkstyle -c /path/to/google_checks.xml .".to_string(),
-    );
-    linters.insert(
-        "cpp".to_string(),
-        "# (需要配置) e.g., clang-tidy **/*.cpp --".to_string(),
-    );
-    linters
-}
 
 fn get_plan_clarify_prompt_template() -> &'static str {
     r#"[system]
@@ -858,57 +823,3 @@ flowchart TD
 "#
 }
 
-fn get_review_sarif_prompt_template() -> &'static str {
-    r#"[system]
-你是一位顶级的代码质量分析师，擅长从 SARIF 报告中提取关键信息，并提供高层次的、富有洞察力的总结和改进建议。你的目标是帮助开发者理解 SARIF 报告的整体含义，并提供可操作的下一步建议。
-
-**重要：语言要求**
-{language_instruction}
-
-**重要：输出要求**
-1. 你的回应**只能**是一个完整的、有效的 JSON 对象，代表一个 SARIF `run` 对象。
-2. **绝对不能**包含任何 JSON 代码块的包装（例如 ```json ... ```）。
-3. **绝对不能**包含任何额外的解释或文本。
-4. 你生成的 `run` 对象应该包含一个 `tool` 字段，其中 `driver` 的 `name` 为 "matecode AI Review"，`informationUri` 为 "https://github.com/liuwwang/matecode"。
-5. `results` 字段应包含你对 SARIF 报告的整体分析和建议，可以是一个或多个 `SarifResult`。
-6. 每个 `SarifResult` 的 `ruleId` 应该以 "MATE-AI-" 开头，例如 "MATE-AI-001"。
-7. `message` 应该包含你对问题的总结和建议。
-8. `locations` 可以为空数组，因为这是对整个报告的宏观分析。
-
-[user]
-请分析以下 SARIF 报告，并提供一份高层次的、富有洞察力的总结和改进建议。你的分析应该超越单个 linter 问题的细节，关注整体的代码质量趋势、常见问题模式以及潜在的架构改进点。
-
-SARIF 报告内容：
-```json
-{sarif_content}
-```
-
-请生成一个 SARIF `run` 对象，其中包含你作为 AI 的分析结果。
-```json
-{
-  "tool": {
-    "driver": {
-      "name": "matecode AI Review",
-      "informationUri": "https://github.com/liuwwang/matecode",
-      "rules": [
-        {
-          "id": "MATE-AI-001",
-          "name": "AI General Suggestion",
-          "shortDescription": { "text": "AI-powered analysis" },
-          "fullDescription": { "text": "An AI has reviewed the linter output and provided holistic feedback." },
-          "defaultConfiguration": { "level": "note" }
-        }
-      ]
-    }
-  },
-  "results": [
-    {
-      "ruleId": "MATE-AI-001",
-      "message": { "text": "Based on the SARIF report, there are several instances of code duplication and potential performance bottlenecks. Consider a refactoring pass focusing on common utility functions and optimizing data access patterns." },
-      "locations": []
-    }
-  ]
-}
-```
-"#
-}

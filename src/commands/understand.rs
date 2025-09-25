@@ -48,25 +48,46 @@ async fn collect_project_info() -> Result<ProjectInfo> {
     // Get recent commits
     let recent_commits = git::run_git_command(&["log", "--oneline", "-10"]).await?;
 
-    // Get file structure with filtering
-    let all_files = git::run_git_command(&["ls-files"]).await?;
+    // Get file structure with filtering - use ls-files with --cached to get only existing files
+    let all_files = git::run_git_command(&["ls-files", "--cached"]).await?;
     
-    // Get deleted files
-    let deleted_files_output = git::run_git_command(&["status", "--porcelain"]).await?;
-    let deleted_files: std::collections::HashSet<String> = deleted_files_output
+    // Get all file statuses including deleted files
+    let status_output = git::run_git_command(&["status", "--porcelain"]).await?;
+    let deleted_files: std::collections::HashSet<String> = status_output
         .lines()
-        .filter(|line| line.starts_with("D "))
-        .map(|line| line[2..].trim().to_string())
+        .filter(|line| line.starts_with("D ") || line.starts_with(" D"))
+        .map(|line| {
+            // Handle both staged and unstaged deletions
+            if line.starts_with("D ") {
+                line[2..].trim().to_string()
+            } else {
+                line[1..].trim().to_string()
+            }
+        })
         .collect();
     
-    let filtered_files: Vec<String> = all_files
-        .lines()
+    // Also check for files that exist in git but not in filesystem
+    let mut actually_existing_files = Vec::new();
+    for file in all_files.lines() {
+        let file = file.trim();
+        if file.is_empty() {
+            continue;
+        }
+        
+        // Skip if file is marked as deleted
+        if deleted_files.contains(file) {
+            continue;
+        }
+        
+        // Check if file actually exists in filesystem
+        if std::path::Path::new(file).exists() {
+            actually_existing_files.push(file.to_string());
+        }
+    }
+    
+    let filtered_files: Vec<String> = actually_existing_files
+        .into_iter()
         .filter(|line| {
-            // Filter out deleted files
-            if deleted_files.contains(*line) {
-                return false;
-            }
-            
             // Filter out files that start with a dot (hidden files/dirs)
             if line.starts_with('.') {
                 return false;
@@ -91,7 +112,7 @@ async fn collect_project_info() -> Result<ProjectInfo> {
                lower_line.ends_with("pnpm-lock.yaml") ||
                lower_line.ends_with("composer.lock") ||
                lower_line.ends_with("gemfile.lock") ||
-               lower_line.ends_with(".lock") && lower_line != "lock.toml" && lower_line != "lock.json" {
+               (lower_line.ends_with(".lock") && lower_line != "lock.toml" && lower_line != "lock.json") {
                 return false;
             }
             
@@ -106,7 +127,6 @@ async fn collect_project_info() -> Result<ProjectInfo> {
             
             true
         })
-        .map(|s| s.to_string())
         .collect();
     
     let file_structure = filtered_files.join("\n");
@@ -121,9 +141,12 @@ async fn collect_project_info() -> Result<ProjectInfo> {
            file.ends_with(".toml") ||
            file.contains("README") ||
            file.contains("readme") {
-            // Limit content reading to avoid oversized prompts
-            if let Ok(content) = read_file_content(file, 2000).await {
-                file_contents.insert(file.clone(), content);
+            // Double-check file exists before reading
+            if std::path::Path::new(file).exists() {
+                // Limit content reading to avoid oversized prompts
+                if let Ok(content) = read_file_content(file, 2000).await {
+                    file_contents.insert(file.clone(), content);
+                }
             }
         }
     }
@@ -183,13 +206,19 @@ async fn analyze_key_features(files: &[String]) -> String {
 
 /// Detects project type based on files in the repository.
 async fn detect_project_type() -> String {
-    // Simplified detection logic
-    if git::run_git_command(&["ls-files", "*Cargo.toml"]).await.is_ok() {
+    // Check for actual existing files
+    if std::path::Path::new("Cargo.toml").exists() {
         "Rust 项目".to_string()
-    } else if git::run_git_command(&["ls-files", "*package.json"]).await.is_ok() {
+    } else if std::path::Path::new("package.json").exists() {
         "Node.js 项目".to_string()
-    } else if git::run_git_command(&["ls-files", "*.py"]).await.is_ok() {
+    } else if std::path::Path::new("requirements.txt").exists() || 
+              std::path::Path::new("pyproject.toml").exists() ||
+              std::path::Path::new("setup.py").exists() {
         "Python 项目".to_string()
+    } else if std::path::Path::new("pom.xml").exists() {
+        "Java 项目".to_string()
+    } else if std::path::Path::new("go.mod").exists() {
+        "Go 项目".to_string()
     } else {
         "未知类型项目".to_string()
     }
@@ -197,26 +226,28 @@ async fn detect_project_type() -> String {
 
 /// Detects technology stack based on files in the repository.
 async fn detect_tech_stack() -> String {
-    // Simplified detection logic
+    // Check for actual existing files
     let mut tech_stack = Vec::new();
     
-    if git::run_git_command(&["ls-files", "*Cargo.toml"]).await.is_ok() {
+    if std::path::Path::new("Cargo.toml").exists() {
         tech_stack.push("Rust".to_string());
     }
     
-    if git::run_git_command(&["ls-files", "*package.json"]).await.is_ok() {
+    if std::path::Path::new("package.json").exists() {
         tech_stack.push("JavaScript/TypeScript".to_string());
     }
     
-    if git::run_git_command(&["ls-files", "*.py"]).await.is_ok() {
+    if std::path::Path::new("requirements.txt").exists() || 
+       std::path::Path::new("pyproject.toml").exists() ||
+       std::path::Path::new("setup.py").exists() {
         tech_stack.push("Python".to_string());
     }
     
-    if git::run_git_command(&["ls-files", "*.java"]).await.is_ok() {
+    if std::path::Path::new("pom.xml").exists() {
         tech_stack.push("Java".to_string());
     }
     
-    if git::run_git_command(&["ls-files", "*.go"]).await.is_ok() {
+    if std::path::Path::new("go.mod").exists() {
         tech_stack.push("Go".to_string());
     }
     

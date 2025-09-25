@@ -15,10 +15,9 @@ async fn main() -> Result<()> {
         commands::Commands::Init => commands::init::handle_init().await?,
         commands::Commands::Commit {
             all,
-            lint,
             structured,
             no_edit,
-        } => commands::commit::handle_commit(all, lint, structured, no_edit).await?,
+        } => commands::commit::handle_commit(all, structured, no_edit).await?,
         commands::Commands::Report {
             since,
             until,
