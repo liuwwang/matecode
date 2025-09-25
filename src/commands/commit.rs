@@ -1,8 +1,8 @@
 use crate::commands::install_hook::{check_hook_status, install_post_commit_hook, HookStatus};
-use crate::commands::linter::handle_linter;
 use crate::config;
 use crate::git;
 use crate::llm::generate_commit_message;
+
 use anyhow;
 use anyhow::Context;
 use colored::Colorize;
@@ -59,18 +59,7 @@ pub async fn handle_commit(
     }
 
     if lint {
-        println!("{}", "(--lint) 提交前运行linter...".bold());
-        if let Some(_output) = handle_linter(false, false, None).await? {
-            if !no_edit
-                && !Confirm::with_theme(&ColorfulTheme::default())
-                    .with_prompt("Lint 检查发现问题。确定还要提交吗")
-                    .default(false)
-                    .interact()?
-            {
-                println!("提交已取消.");
-                return Ok(());
-            }
-        }
+        println!("{}", "提交前Lint功能已被移除".bold());
         println!("{}", "-".repeat(60));
     }
 
@@ -127,7 +116,8 @@ pub async fn handle_commit(
     }
 
     let llm_client = config::get_llm_client().await?;
-    let mut commit_message = generate_commit_message(llm_client.as_client(), &diff).await?;
+    let formatted_diff = git::format_diff_content("staged_changes.diff", &diff);
+    let mut commit_message = generate_commit_message(llm_client.as_client(), &formatted_diff).await?;
     commit_message = commit_message.replace('`', "'");
 
     // If in non-interactive mode (for tests), commit directly and exit.
@@ -171,7 +161,7 @@ pub async fn handle_commit(
             }
             1 => {
                 println!("🔄 好的，正在为您重新生成...");
-                commit_message = generate_commit_message(llm_client.as_client(), &diff).await?;
+                commit_message = generate_commit_message(llm_client.as_client(), &formatted_diff).await?;
                 commit_message = commit_message.replace('`', "'");
                 continue;
             }
@@ -191,7 +181,7 @@ pub async fn handle_commit(
                     println!("🤖 正在根据您的反馈改进提交信息...");
                     let improvement_prompt = format!(
                         "用户对以下提交信息有改进建议：\n\n当前提交信息：\n{}\n\n用户反馈：\n{}\n\n代码变更内容：\n{}\n\n请根据用户的反馈和代码变更内容改进提交信息，保持简洁明了，符合conventional commits格式。只返回改进后的提交信息，不要添加额外的解释。",
-                        message_for_improvement, user_feedback, diff
+                        message_for_improvement, user_feedback, formatted_diff
                     );
 
                     match llm_client

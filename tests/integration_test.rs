@@ -132,22 +132,6 @@ fn test_init_command() {
 }
 
 #[tokio::test]
-async fn test_branch_command() {
-    let mut server = mockito::Server::new_async().await;
-    let mock = mock_openai_api(&mut server, "<branch_name>feat/new-awesome-feature</branch_name>");
-
-    let repo = TestRepo::new().with_git().with_config(&server.url());
-    let mut cmd = repo.matecode();
-    cmd.args(["branch", "a new feature"]);
-
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains("feat/new-awesome-feature"));
-    
-    mock.assert();
-}
-
-#[tokio::test]
 async fn test_commit_command_with_staged_files() {
     let mut server = mockito::Server::new_async().await;
     let mock = mock_openai_api(&mut server, "<commit_message>feat: add new file</commit_message>");
@@ -164,66 +148,8 @@ async fn test_commit_command_with_staged_files() {
     mock.assert();
 }
 
-#[tokio::test]
-async fn test_review_command() {
-    let mut server = mockito::Server::new_async().await;
-    let mock = mock_openai_api(&mut server, "### ✨ LGTM! Looks good to me!");
 
-    let repo = TestRepo::new().with_git().with_config(&server.url());
-    create_and_stage_file(repo.path(), "file.txt", "some changes to review\n");
 
-    let mut cmd = repo.matecode();
-    cmd.arg("review");
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains("LGTM!"));
-    
-    mock.assert();
-}
-
-#[test]
-fn test_lint_command_plain() {
-    let repo = TestRepo::new().with_git().with_config("http://localhost:1234"); // Doesn't call API
-    create_and_stage_file(repo.path(), "src/main.rs", "fn main() { let x = 5; }");
-
-    let mut cmd = repo.matecode();
-    cmd.arg("lint");
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains("正在运行命令: cargo clippy"));
-}
-
-#[tokio::test]
-#[ignore]
-async fn test_lint_command_sarif_ai_enhanced() {
-    let mut server = mockito::Server::new_async().await;
-    let mock_sarif_run = r#"{ \"tool\": { \"driver\": { \"name\": \"matecode AI Review\", \"information_uri\": \"https://github.com/liuwwang/matecode\", \"rules\": [ { \"id\": \"MATE-AI-001\", \"name\": \"AI General Suggestion\", \"short_description\": { \"text\": \"AI-powered analysis\" }, \"full_description\": { \"text\": \"An AI has reviewed the linter output and provided holistic feedback.\"}, \"default_configuration\": { \"level\": \"note\" } } ] } }, \"results\": [ { \"ruleId\": \"MATE-AI-001\", \"message\": { \"text\": \"This is a great starting point. Consider refactoring complex functions.\"}, \"locations\": [] } ] }"#;
-    let mock = mock_openai_api(&mut server, mock_sarif_run);
-
-    let repo = TestRepo::new().with_git().with_config(&server.url());
-
-    // Create a minimal Cargo.toml to make it a valid Rust project for clippy
-    let cargo_toml_content = r#"
-        [package]
-        name = "test-crate"
-        version = "0.1.0"
-        edition = "2021"
-
-        [lib]
-        path = "src/lib.rs"
-    "#;
-    fs::write(repo.path().join("Cargo.toml"), cargo_toml_content).unwrap();
-
-    create_and_stage_file(repo.path(), "src/lib.rs", "pub fn a() -> bool { if true { return true } else { return false } }");
-
-    let mut cmd = repo.matecode();
-    cmd.args(["lint", "--format", "--ai-enhance"]);
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains(r#""name": "matecode AI Review""#));
-    
-    mock.assert();
-}
 
 #[tokio::test]
 async fn test_report_command() {

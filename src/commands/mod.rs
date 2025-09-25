@@ -1,11 +1,9 @@
 pub mod archive;
-pub mod branch;
 pub mod commit;
 pub mod init;
 pub mod install_hook;
-pub mod linter;
 pub mod report;
-pub mod review;
+pub mod understand;
 
 use clap::{Parser, Subcommand};
 
@@ -65,37 +63,10 @@ pub enum Commands {
         period: Option<String>,
     },
 
-    /// 进行代码风格检查
-    Lint {
-        /// 将 linter 输出格式化为 SARIF
-        #[arg(long)]
-        sarif: bool,
-
-        /// [需要 --sarif] 使用 AI 增强 SARIF 输出
-        #[arg(long)]
-        ai_enhance: bool,
-    },
-
-    /// 辅助你完成review代码
-    #[command(alias = "rev")]
-    Review {
-        /// 在审查前运行 lint 并将结果作为附加上下文
-        #[arg(long)]
-        lint: bool,
-    },
-
-    /// AI生成分支名称
-    #[command(alias = "b")]
-    Branch {
-        /// 功能描述
-        description: String,
-
-        /// 直接创建并切换到新分支
+    /// AI理解项目结构和功能
+    Understand {
+        /// 指定要分析的目录路径，默认为当前git仓库根目录
         #[arg(short, long)]
-        create: bool,
-
-        /// 基于当前暂存区变更生成分支名
-        #[arg(long)]
-        from_staged: bool,
+        dir: Option<String>,
     },
 }

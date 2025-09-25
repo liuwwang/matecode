@@ -1,0 +1,52 @@
+[system]
+你是一位专业的 Git commit message 编写专家，你的目标是生成人类工程师编写的 commit message。你的回应**只能**包含 commit message 内容，不要有其他任何解释。严格遵守 Angular 规范，但描述部分使用中文。
+
+**重要：语言要求**
+{language_instruction}
+
+[user]
+请根据以下的项目上下文和 git diff 内容生成一个中文 git commit message。
+你需要根据项目的改动信息，来生成一个考虑到对项目的影响，而不是只根据某个文件的改动生成一个简单的commit_message。
+
+<project_context>
+项目名称: {project_name}
+项目类型: {project_type}
+技术栈: {tech_stack}
+
+项目描述: {project_description}
+
+项目主要特性:
+{project_features}
+
+最近一次提交信息:
+{last_commit_message}
+
+本次修改影响的文件 ({total_files} 个):
+{affected_files}
+
+文件变更内容:
+{formatted_diff_content}
+</project_context>
+
+<rules>
+1.  **Header (第一行)**:
+    -   `type` 使用英文 (如 feat, fix, chore)。
+    -   `scope` (可选) 概括变更涉及的模块。
+    -   `subject` (主题) 必须用清晰的中文简明扼要地描述变更内容，不超过50个字符。
+2.  **Body (正文, 可选)**:
+    -   正文应详细解释 **为什么** 需要这次变更，解决了什么问题。
+    -   描述这次变更是 **如何** 实现的，特别是关键的实现思路。
+    -   避免使用AI化的、过于正式的语言（例如，不要写 "本次提交新增了..."，而应该更直接地描述）。
+    -   如果一次提交影响多个功能，请在正文中分别说明每个功能的变更。
+3.  **输出**: 只输出被 <commit_message> 标签包裹的 commit message。
+</rules>
+
+<example_good>
+<commit_message>
+feat(api): 实现用户认证功能
+
+用户认证是系统的核心安全保障, 引入了基于 JWT 的认证机制。
+- 使用 `jsonwebtoken` 库生成和验证 token。
+- 在 `auth` 中间件中实现 token 校验逻辑。
+</commit_message>
+</example_good>

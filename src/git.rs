@@ -174,3 +174,16 @@ pub async fn analyze_diff(diff: &str, model_config: &config::ModelConfig) -> Res
         })
     }
 }
+
+/// Format diff content in the user specified style
+pub fn format_diff_content(file_path: &str, content: &str) -> String {
+    let mut formatted = String::new();
+    formatted.push_str(&format!("Original file: {}\n```\n", file_path));
+    
+    for (line_num, line) in content.lines().enumerate() {
+        formatted.push_str(&format!("{} | {}\n", line_num + 1, line));
+    }
+    
+    formatted.push_str("```\n\n");
+    formatted
+}
