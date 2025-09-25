@@ -325,6 +325,7 @@ async fn create_default_prompts(prompts_dir: &Path) -> Result<()> {
         ("report.toml", get_report_prompt_template()),
         ("summarize.toml", get_summarize_prompt_template()),
         ("combine.toml", get_combine_prompt_template()),
+        ("understand.toml", get_understand_prompt_template()),
         ("plan_clarify.toml", get_plan_clarify_prompt_template()),
         (
             "plan_clarify_specific.toml",
@@ -590,19 +591,50 @@ pub async fn get_prompt_template(name: &str) -> Result<String> {
     let config_dir = get_config_dir().await?;
     let prompt_path = config_dir.join("prompts").join(format!("{name}.toml"));
 
-    if !prompt_path.exists() {
-        return Err(anyhow::anyhow!(
-            "提示词模板文件不存在: {prompt_path:?}。请运行 'matecode init' 重新创建。",
-        ));
-    }
-
-    let mut content = fs::read_to_string(prompt_path).await?;
+    // 如果文件不存在或无法读取，将在下方为指定模板提供内置回退
+    let mut content = if prompt_path.exists() {
+        fs::read_to_string(&prompt_path).await?
+    } else {
+        String::new()
+    };
 
     // 加载配置以获取语言设置
     let config = load_config().await?;
     let language_instruction = get_language_instruction(&config.language);
 
     // 在提示词中插入语言设置
+    if name == "understand" {
+        // 校验模板占位符是否符合预期；否则使用内置模板并写回
+        let required = [
+            "{project_name}",
+            "{project_type}",
+            "{tech_stack}",
+            "{file_structure_summary}",
+            "{key_features}",
+            "{recent_changes}",
+            "{file_contents}",
+        ];
+        let forbidden = [
+            "{project_description}",
+            "{total_files}",
+            "{file_types}",
+            "{features}",
+            "{comprehensive_report}",
+        ];
+
+        let is_missing_required = content.is_empty()
+            || required.iter().any(|k| !content.contains(k));
+        let has_forbidden = forbidden.iter().any(|k| content.contains(k));
+
+        if is_missing_required || has_forbidden {
+            let mut fallback = get_understand_prompt_template().to_string();
+            fallback = fallback.replace("{language_instruction}", &language_instruction);
+            // 将修正后的模板写回用户配置，避免后续再次出错
+            fs::write(&prompt_path, &fallback).await.ok();
+            return Ok(fallback);
+        }
+    }
+
     content = content.replace("{language_instruction}", &language_instruction);
 
     Ok(content)
@@ -775,6 +807,84 @@ fn get_doc_generate_prompt_template() -> &'static str {
 部署流程和运维注意事项
 
 请确保文档内容详实、准确，并包含必要的代码示例。
+"#
+}
+
+fn get_understand_prompt_template() -> &'static str {
+    r#"[system]
+你是一位经验丰富的软件架构师和项目经理。请基于提供的项目上下文信息，分析并生成一个准确、实用的项目说明书。
+
+**重要：语言要求**
+{language_instruction}
+
+[user]
+请基于以下信息生成一个结构化的项目理解报告。**重要：你必须严格基于提供的实际文件结构和内容进行分析，绝对不能编造或推测不存在的功能。**
+
+特别注意：
+1. 只分析实际存在的文件和代码
+2. 不要提及任何在文件列表中没有出现的功能
+3. 如果某个功能在代码中不存在，不要假设它存在
+4. 基于实际的文件内容进行推断，而不是基于文件名推测
+
+<project_context>
+项目名称: {project_name}
+项目类型: {project_type}
+技术栈: {tech_stack}
+
+文件结构:
+{file_structure_summary}
+
+主要特性:
+{key_features}
+
+最近的变更:
+{recent_changes}
+</project_context>
+
+<file_contents>
+以下是一些关键文件的内容：
+{file_contents}
+</file_contents>
+
+<analysis_rules>
+在生成报告时，请严格遵循以下规则：
+1. **绝对禁止编造功能**：只描述在提供的文件列表中实际存在的功能
+2. **基于实际代码**：所有分析必须基于提供的文件内容，不能推测
+3. **文件存在性检查**：如果某个文件不在提供的列表中，不要假设它存在
+4. **功能验证**：每个提到的功能都必须在提供的代码中有对应的实现
+5. **避免假设**：不要基于文件名或目录名推测功能，必须看到实际代码
+6. **诚实报告**：如果信息不足，请明确说明，不要编造
+</analysis_rules>
+
+<report_format>
+请严格按照以下结构生成报告：
+
+## 1. 项目概述
+- 项目核心目的和主要功能
+- 当前发展阶段和成熟度评估
+
+## 2. 核心功能模块
+- 列出并详细描述当前实际存在的主要功能模块
+- 每个模块的关键职责和作用
+- 模块间的关系和交互方式
+
+## 3. 架构设计
+- 整体架构风格和设计模式
+- 关键组件和技术选型理由
+- 数据流和控制流的说明
+
+## 4. 当前状态评估
+- 项目的优势和亮点
+- 潜在的风险和限制
+- 建议的改进方向（如果有）
+
+## 5. 使用说明（如果适用）
+- 如何运行该项目
+- 主要配置项说明
+- 常见问题和解决方案
+
+请确保报告内容专业、准确、清晰，并使用中文回答。重点突出项目当前的实际状态，避免提及已过时或不存在的功能。
+</report_format>
 "#
 }
 
